@@ -207,6 +207,72 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.metalSnapshot.executionState, .idle)
     }
 
+    func testRemoveSourceRemovesFromListAndDeselectsIfActive() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.duckdb"))
+        XCTAssertEqual(viewModel.sources.count, 2)
+
+        let sourceToRemove = viewModel.sources.first(where: { $0.displayName == "b.duckdb" })!
+        viewModel.selectSource(sourceToRemove)
+        XCTAssertEqual(viewModel.selectedSource, sourceToRemove)
+
+        viewModel.removeSource(sourceToRemove)
+
+        XCTAssertEqual(viewModel.sources.count, 1)
+        XCTAssertEqual(viewModel.sources.first?.displayName, "a.parquet")
+        // When removing the selected source, it falls back to the first remaining source
+        XCTAssertEqual(viewModel.selectedSource?.displayName, "a.parquet")
+        XCTAssertEqual(viewModel.transcript.last?.title, "Source Removed")
+    }
+
+    func testRemoveSourceKeepsSelectionWhenDifferentSourceRemoved() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.duckdb"))
+        let firstSource = viewModel.sources.first(where: { $0.displayName == "a.parquet" })!
+        viewModel.selectSource(firstSource)
+
+        let otherSource = viewModel.sources.first(where: { $0.displayName == "b.duckdb" })!
+        viewModel.removeSource(otherSource)
+
+        XCTAssertEqual(viewModel.sources.count, 1)
+        XCTAssertEqual(viewModel.selectedSource, firstSource)
+    }
+
+    func testRemoveAllSourcesClearsEverything() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.duckdb"))
+
+        viewModel.removeAllSources()
+
+        XCTAssertTrue(viewModel.sources.isEmpty)
+        XCTAssertNil(viewModel.selectedSource)
+        XCTAssertEqual(viewModel.transcript.last?.title, "Sources Cleared")
+    }
+
     func testMetalSnapshotReflectsSelectedSourceAndExecutionOutcome() async {
         let result = DuckDBExecutionResult(
             binaryPath: "/opt/homebrew/bin/duckdb",

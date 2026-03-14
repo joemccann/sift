@@ -101,6 +101,12 @@ public struct SiftRootView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Source \(source.displayName)")
+                        .contextMenu {
+                            Button("Remove Source") {
+                                viewModel.removeSource(source)
+                            }
+                            .accessibilityIdentifier("context-remove-source")
+                        }
                     }
                 }
             }

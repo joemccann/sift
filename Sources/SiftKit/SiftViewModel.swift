@@ -196,6 +196,35 @@ public final class SiftViewModel: ObservableObject {
         persistSnapshot()
     }
 
+    public func removeSource(_ source: DataSource) {
+        sources.removeAll(where: { $0.id == source.id })
+        if selectedSource == source {
+            selectedSource = sources.first
+        }
+        appendTranscript(
+            TranscriptItem(
+                role: .system,
+                title: "Source Removed",
+                body: "Removed `\(source.displayName)` from the workspace."
+            )
+        )
+        persistSnapshot()
+    }
+
+    public func removeAllSources() {
+        let count = sources.count
+        sources.removeAll()
+        selectedSource = nil
+        appendTranscript(
+            TranscriptItem(
+                role: .system,
+                title: "Sources Cleared",
+                body: "Removed \(count) source\(count == 1 ? "" : "s") from the workspace."
+            )
+        )
+        persistSnapshot()
+    }
+
     public func triggerPrompt(_ prompt: String) async {
         composerText = prompt
         await sendPrompt()
