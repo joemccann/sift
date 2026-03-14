@@ -205,4 +205,89 @@ final class MetalWorkspaceSurfaceTests: XCTestCase {
         XCTAssertLessThanOrEqual(visualization.sourceDensity, 1)
         XCTAssertLessThanOrEqual(visualization.readinessFraction, 1)
     }
+
+    func testVisualizationDifferentProvidersProduceDifferentSignals() {
+        let snapshotClaude = MetalWorkspaceSnapshot(
+            destination: .assistant, provider: .claude, sourceKind: .parquet,
+            sourceCount: 1, transcriptCount: 3, providerReadiness: 1,
+            executionState: .idle, commandDurationMilliseconds: 0,
+            commandOutputBytes: 0, isRunning: false
+        )
+        let snapshotGemini = MetalWorkspaceSnapshot(
+            destination: .assistant, provider: .gemini, sourceKind: .parquet,
+            sourceCount: 1, transcriptCount: 3, providerReadiness: 1,
+            executionState: .idle, commandDurationMilliseconds: 0,
+            commandOutputBytes: 0, isRunning: false
+        )
+
+        let vizClaude = MetalWorkspaceVisualization(snapshot: snapshotClaude, signalCount: 24)
+        let vizGemini = MetalWorkspaceVisualization(snapshot: snapshotGemini, signalCount: 24)
+        XCTAssertNotEqual(vizClaude.signalBars, vizGemini.signalBars)
+    }
+}
+
+// MARK: - MetalDeviceCapabilities
+
+final class MetalDeviceCapabilitiesTests: XCTestCase {
+    func testSummaryBadgesIncludesName() {
+        let caps = MetalDeviceCapabilities(
+            name: "Apple M1",
+            isLowPower: false,
+            hasUnifiedMemory: true,
+            supportsDynamicLibraries: true,
+            recommendedMaxWorkingSetSizeMB: 8192
+        )
+
+        let badges = caps.summaryBadges
+        XCTAssertTrue(badges.contains("Apple M1"))
+        XCTAssertTrue(badges.contains("Unified memory"))
+        XCTAssertTrue(badges.contains("High throughput"))
+        XCTAssertTrue(badges.contains("Dynamic libraries"))
+        XCTAssertTrue(badges.contains("8192 MB working set"))
+    }
+
+    func testLowPowerBadge() {
+        let caps = MetalDeviceCapabilities(
+            name: "Intel UHD",
+            isLowPower: true,
+            hasUnifiedMemory: false,
+            supportsDynamicLibraries: false,
+            recommendedMaxWorkingSetSizeMB: nil
+        )
+
+        let badges = caps.summaryBadges
+        XCTAssertTrue(badges.contains("Low power"))
+        XCTAssertTrue(badges.contains("Discrete memory"))
+        XCTAssertFalse(badges.contains("Dynamic libraries"))
+        XCTAssertFalse(badges.contains { $0.contains("MB working set") })
+    }
+
+    func testEquality() {
+        let a = MetalDeviceCapabilities(
+            name: "GPU", isLowPower: false, hasUnifiedMemory: true,
+            supportsDynamicLibraries: true, recommendedMaxWorkingSetSizeMB: 4096
+        )
+        let b = MetalDeviceCapabilities(
+            name: "GPU", isLowPower: false, hasUnifiedMemory: true,
+            supportsDynamicLibraries: true, recommendedMaxWorkingSetSizeMB: 4096
+        )
+        XCTAssertEqual(a, b)
+    }
+
+    func testInequality() {
+        let a = MetalDeviceCapabilities(
+            name: "GPU A", isLowPower: false, hasUnifiedMemory: true,
+            supportsDynamicLibraries: true, recommendedMaxWorkingSetSizeMB: 4096
+        )
+        let b = MetalDeviceCapabilities(
+            name: "GPU B", isLowPower: true, hasUnifiedMemory: false,
+            supportsDynamicLibraries: false, recommendedMaxWorkingSetSizeMB: nil
+        )
+        XCTAssertNotEqual(a, b)
+    }
+
+    func testCurrentReturnsNilWhenNoDevice() {
+        let caps = MetalDeviceInspector.current(makeDefaultDevice: { nil })
+        XCTAssertNil(caps)
+    }
 }
