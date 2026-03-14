@@ -9,9 +9,9 @@ sift/
 ├── Package.swift               # Swift package manifest
 ├── Sources/
 │   ├── SiftApp/                # @main entry point
-│   ├── SiftCore/               # Shared models (settings, data source, transcript, Metal snapshot)
+│   ├── SiftCore/               # Shared models, SQL extractor, settings, transcript
 │   ├── DuckDBAdapter/          # DuckDB CLI binary locator, executor, argument parser
-│   ├── SiftKit/                # SwiftUI views, view model, session, keychain, provider chat
+│   ├── SiftKit/                # SwiftUI views, view model, session, keychain, provider chat, source scanner
 │   └── SiftMetal/              # MetalKit workspace surfaces and shader library
 ├── Tests/
 │   ├── SiftCoreTests/
@@ -19,11 +19,13 @@ sift/
 │   ├── SiftKitTests/
 │   └── SiftMetalTests/
 ├── scripts/
-│   ├── build_local_macos_app.sh      # Build Sift.app bundle
+│   ├── build_local_macos_app.sh      # Build Sift.app bundle with signing + entitlements
 │   ├── build_and_launch_local_app.sh # Build and open the app
 │   ├── build_local_launcher.sh       # Generate Finder launcher
 │   ├── compile_metal_library.sh      # Precompile Metal shaders
+│   ├── setup_signing.sh              # One-time self-signed certificate creation
 │   ├── run_ui_smoke_tests.sh         # End-to-end UI verification
+│   ├── verify_nl_query.sh            # E2E natural language query verification
 │   └── ocr_window_text.swift         # Vision OCR helper for smoke tests
 ├── launcher/                   # Finder-friendly launcher AppleScript
 ├── docs/                       # Design research and architecture docs
@@ -39,6 +41,14 @@ swift build
 swift test
 ./scripts/build_local_macos_app.sh        # Produces build/Sift.app
 ./scripts/run_ui_smoke_tests.sh           # Full UI smoke flow
+./scripts/verify_nl_query.sh              # E2E natural language query verification
+```
+
+### Stable Code Signing
+
+Run once to create a self-signed certificate that persists macOS permissions across rebuilds:
+```bash
+./scripts/setup_signing.sh
 ```
 
 If the Metal compiler is missing:
@@ -53,8 +63,12 @@ xcodebuild -downloadComponent metalToolchain
 - Keychain service: `local.sift.macos`
 - Env overrides: `SIFT_SESSION_FILE`, `SIFT_AUTOMATION_PICK_SOURCE`
 - Provider chat routes through installed local `claude`, `codex`, or `gemini` CLIs
+- Natural language queries auto-execute: provider response SQL is extracted and run silently
+- Schema discovery via `information_schema.tables` for schema-qualified table names
+- Directory scanning with configurable depth for auto-discovering data sources
 - Hybrid SwiftUI + MetalKit architecture: native controls with `MTKView`-backed workspace panels
 - Metal shader library: `SiftMetalShaders`
+- Code signing: stable "Sift Development" certificate (via `setup_signing.sh`) or ad-hoc fallback
 
 ## Testing
 

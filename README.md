@@ -12,6 +12,12 @@ A native macOS app for exploring parquet and DuckDB files through a chat-first d
 
 ## Current App Features
 
+- **Natural language queries**: Ask questions in plain English — Sift sends the question to the selected AI provider, extracts the generated SQL, executes it against your data, and shows results directly. No SQL knowledge required.
+- **Auto-execute SQL pipeline**: Provider responses containing SQL in fenced code blocks are automatically executed. Schema context is injected into prompts so the provider generates correct, schema-qualified queries.
+- **Directory scanning**: Scan a directory to auto-discover `.duckdb`, `.parquet`, and `.db` files with configurable recursion depth (1–10 levels).
+- **Copy-to-clipboard**: Each chat bubble has a copy button overlay for quick clipboard access.
+- **Clear conversation**: Toolbar button to reset the transcript and start fresh.
+- **Text selection**: Chat text is selectable for highlighting and copying.
 - First-run setup launches before the main workspace until a default provider is configured.
 - Settings are available both in-app and through the standard macOS Settings scene.
 - Provider-backed chat routes through the selected local `claude`, `codex`, or `gemini` CLI.
@@ -27,10 +33,26 @@ A native macOS app for exploring parquet and DuckDB files through a chat-first d
 ```bash
 swift build
 swift test
-./scripts/run_ui_smoke_tests.sh
+./scripts/build_local_macos_app.sh        # Produces build/Sift.app
+./scripts/build_and_launch_local_app.sh   # Build and open
+./scripts/run_ui_smoke_tests.sh           # Full UI smoke flow
+./scripts/verify_nl_query.sh              # E2E natural language query verification
 ```
 
-`run_ui_smoke_tests.sh` launches an isolated app session, drives the UI with keyboard shortcuts, and verifies visible states with OCR on the app window. The smoke flow covers first-run setup, navigation, rerunning setup from Settings, diagnostics, raw DuckDB CLI execution, provider-backed chat, source import, and parquet preview.
+### Stable Code Signing (One-Time Setup)
+
+By default, Sift uses ad-hoc code signing. This means macOS forgets permission grants (directory access, etc.) on every rebuild. To persist permissions across rebuilds, create a self-signed development certificate:
+
+```bash
+./scripts/setup_signing.sh
+```
+
+This creates a "Sift Development" certificate in your login keychain. Once installed, `build_local_macos_app.sh` automatically uses it. You only need to run this once — the certificate persists in your keychain.
+
+### Test Scripts
+
+- `run_ui_smoke_tests.sh` — Launches an isolated app session, drives the UI with keyboard shortcuts, and verifies visible states with OCR on the app window. Covers first-run setup, navigation, diagnostics, raw DuckDB CLI execution, provider-backed chat, source import, and parquet preview.
+- `verify_nl_query.sh` — End-to-end verification that a natural language query produces correct results. Launches the app, completes setup, imports a DuckDB source, types a query, and verifies the expected output via OCR.
 
 ## Metal Replatform
 
@@ -113,6 +135,19 @@ After that, double-click `launcher/Launch Sift.app` in Finder. It will:
 - avoid opening Terminal
 
 If the build or launch fails, check `logs/build-and-launch.log`.
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `build_local_macos_app.sh` | Build `Sift.app` bundle with code signing and entitlements |
+| `build_and_launch_local_app.sh` | Build and open the app |
+| `build_local_launcher.sh` | Generate Finder-friendly launcher |
+| `compile_metal_library.sh` | Precompile Metal shaders to `.metallib` |
+| `setup_signing.sh` | Create self-signed "Sift Development" certificate (one-time) |
+| `run_ui_smoke_tests.sh` | End-to-end UI smoke test via AppleScript + OCR |
+| `verify_nl_query.sh` | E2E natural language query verification |
+| `ocr_window_text.swift` | Vision OCR helper used by test scripts |
 
 ## Contents
 
