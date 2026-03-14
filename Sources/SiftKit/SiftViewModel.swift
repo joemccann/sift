@@ -579,31 +579,39 @@ public final class SiftViewModel: ObservableObject {
     private func discoverSchema(for source: DataSource) async -> String? {
         guard let executor else { return nil }
 
-        let sql: String
         switch source.kind {
         case .duckdb:
-            sql = "SHOW TABLES;"
-        case .parquet:
-            let escaped = source.path.replacingOccurrences(of: "'", with: "''")
-            sql = "DESCRIBE SELECT * FROM read_parquet('\(escaped)');"
-        }
+            // Use information_schema to find tables across all schemas (SHOW TABLES misses non-default schemas).
+            let tableSQL = "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog');"
+            let tablePlan = DuckDBCommandPlan(source: source, sql: tableSQL, explanation: "Schema discovery")
+            guard let tableResult = try? await executor.execute(plan: tablePlan),
+                  tableResult.exitCode == 0, !tableResult.stdout.isEmpty else {
+                return nil
+            }
 
-        let plan = DuckDBCommandPlan(source: source, sql: sql, explanation: "Schema discovery")
-        guard let result = try? await executor.execute(plan: plan),
-              result.exitCode == 0, !result.stdout.isEmpty else {
-            return nil
-        }
-
-        if source.kind == .duckdb {
-            // For DuckDB: get table list, then describe each table
-            let tables = result.stdout
+            // Parse schema.table pairs from -table format output (pipe-delimited with border lines).
+            let rows = tableResult.stdout
                 .split(separator: "\n")
-                .dropFirst() // header
                 .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
+                .filter { !$0.isEmpty && !$0.hasPrefix("+") && !$0.hasPrefix("| table_schema") }
 
-            var schema = "Tables: \(tables.joined(separator: ", "))\n"
-            for table in tables.prefix(10) {
+            var qualifiedTables: [String] = []
+            for row in rows {
+                let parts = row.split(separator: "|")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+                if parts.count >= 2 {
+                    let schema = parts[0]
+                    let table = parts[1]
+                    let qualified = schema == "main" ? table : "\(schema).\(table)"
+                    qualifiedTables.append(qualified)
+                }
+            }
+
+            if qualifiedTables.isEmpty { return nil }
+
+            var schema = "Tables (use these exact names in SQL): \(qualifiedTables.joined(separator: ", "))\n"
+            for table in qualifiedTables.prefix(10) {
                 let describePlan = DuckDBCommandPlan(source: source, sql: "DESCRIBE \(table);", explanation: "")
                 if let descResult = try? await executor.execute(plan: describePlan),
                    descResult.exitCode == 0 {
@@ -611,7 +619,15 @@ public final class SiftViewModel: ObservableObject {
                 }
             }
             return schema
-        } else {
+
+        case .parquet:
+            let escaped = source.path.replacingOccurrences(of: "'", with: "''")
+            let sql = "DESCRIBE SELECT * FROM read_parquet('\(escaped)');"
+            let plan = DuckDBCommandPlan(source: source, sql: sql, explanation: "Schema discovery")
+            guard let result = try? await executor.execute(plan: plan),
+                  result.exitCode == 0, !result.stdout.isEmpty else {
+                return nil
+            }
             return "Parquet schema:\n\(result.stdout)"
         }
     }
