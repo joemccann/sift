@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import DuckDBAdapter
 import SiftCore
 
@@ -322,6 +323,33 @@ public final class SiftViewModel: ObservableObject {
         case let .rawCommand(argumentsLine):
             removeThinkingItem(thinkingItem.id)
             await executeRawDuckDB(argumentsLine: argumentsLine, source: .chatComposer)
+
+        case .clearConversation:
+            removeThinkingItem(thinkingItem.id)
+            clearConversation()
+
+        case .listSources:
+            let sourceList: String
+            if sources.isEmpty {
+                sourceList = "No sources attached. Use the toolbar to open a `.duckdb`, `.parquet`, or `.csv` file."
+            } else {
+                let lines = sources.enumerated().map { index, source in
+                    let marker = source == selectedSource ? "→" : " "
+                    return "\(marker) \(index + 1). **\(source.displayName)** (\(source.kind.rawValue))"
+                }
+                sourceList = "**Attached Sources**\n\n" + lines.joined(separator: "\n")
+            }
+            replaceThinkingItem(thinkingItem.id, with:
+                TranscriptItem(
+                    role: .assistant,
+                    title: "Sources",
+                    body: sourceList
+                )
+            )
+
+        case .copyLastResult:
+            removeThinkingItem(thinkingItem.id)
+            copyLastResultToClipboard()
         }
     }
 
@@ -420,6 +448,41 @@ public final class SiftViewModel: ObservableObject {
 
     public func requestComposerFocus() {
         composerFocusRequestID += 1
+    }
+
+    public func copyLastResultToClipboard() {
+        guard let lastExecution else {
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Nothing to Copy",
+                    body: "No query results available. Run a command first."
+                )
+            )
+            return
+        }
+
+        let text = lastExecution.stdout.isEmpty ? lastExecution.stderr : lastExecution.stdout
+        guard !text.isEmpty else {
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Nothing to Copy",
+                    body: "The last command produced no output."
+                )
+            )
+            return
+        }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        appendTranscript(
+            TranscriptItem(
+                role: .system,
+                title: "Copied",
+                body: "Last query result (\(text.count) characters) copied to clipboard."
+            )
+        )
     }
 
     public func runRawDuckDBCommand() async {

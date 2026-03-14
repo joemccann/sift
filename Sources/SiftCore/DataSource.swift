@@ -38,6 +38,8 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
             DataSource(url: url, kind: .parquet)
         case "duckdb", "db":
             DataSource(url: url, kind: .duckdb)
+        case "csv", "tsv":
+            DataSource(url: url, kind: .csv)
         default:
             nil
         }

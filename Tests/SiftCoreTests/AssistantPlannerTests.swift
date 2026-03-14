@@ -1,6 +1,26 @@
 import XCTest
 @testable import SiftCore
 
+final class DataSourceTests: XCTestCase {
+    func testCSVFileCreatesCSVSource() {
+        let source = DataSource.from(url: URL(fileURLWithPath: "/tmp/data.csv"))
+        XCTAssertNotNil(source)
+        XCTAssertEqual(source?.kind, .csv)
+        XCTAssertEqual(source?.displayName, "data.csv")
+    }
+
+    func testTSVFileCreatesCSVSource() {
+        let source = DataSource.from(url: URL(fileURLWithPath: "/tmp/data.tsv"))
+        XCTAssertNotNil(source)
+        XCTAssertEqual(source?.kind, .csv)
+    }
+
+    func testUnsupportedExtensionReturnsNil() {
+        let source = DataSource.from(url: URL(fileURLWithPath: "/tmp/data.xlsx"))
+        XCTAssertNil(source)
+    }
+}
+
 final class AssistantPlannerTests: XCTestCase {
     func testNoSourceReturnsGuidance() {
         let action = AssistantPlanner.plan(prompt: "preview this", source: nil)
@@ -66,6 +86,87 @@ final class AssistantPlannerTests: XCTestCase {
         XCTAssertEqual(prompt, "Explain factor momentum")
     }
 
+    func testHelpCommandReturnsAssistantReply() {
+        let action = AssistantPlanner.plan(prompt: "/help", source: nil)
+
+        guard case let .assistantReply(reply) = action else {
+            return XCTFail("Expected assistant reply")
+        }
+
+        XCTAssertTrue(reply.contains("Sift Commands"))
+        XCTAssertTrue(reply.contains("/sql"))
+        XCTAssertTrue(reply.contains("/duckdb"))
+    }
+
+    func testDuckDBShowColumnsUsesInformationSchema() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "Show columns", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("information_schema.columns"))
+    }
+
+    func testDuckDBDescribeSchemaUsesDescribe() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "Show the schema", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertEqual(plan.sql, "DESCRIBE;")
+    }
+
+    func testCSVPreviewUsesReadCSV() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/trades.csv"), kind: .csv)
+        let action = AssistantPlanner.plan(prompt: "Preview this CSV file", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("read_csv('/tmp/trades.csv')"))
+        XCTAssertTrue(plan.sql.contains("LIMIT 25"))
+    }
+
+    func testCSVSummarizeUsesSummarize() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/trades.csv"), kind: .csv)
+        let action = AssistantPlanner.plan(prompt: "Summarize this data", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("SUMMARIZE"))
+        XCTAssertTrue(plan.sql.contains("read_csv"))
+    }
+
+    func testCSVNaturalLanguageFallsToNLQuery() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/trades.csv"), kind: .csv)
+        let action = AssistantPlanner.plan(prompt: "What is the average price per symbol?", source: source)
+
+        guard case let .naturalLanguageQuery(prompt, queriedSource) = action else {
+            return XCTFail("Expected natural language query, got \(action)")
+        }
+
+        XCTAssertEqual(prompt, "What is the average price per symbol?")
+        XCTAssertEqual(queriedSource, source)
+    }
+
+    func testParquetSummarizeUsesSummarize() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "Show statistics", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("SUMMARIZE"))
+    }
+
     func testDuckDBUnknownPromptUsesNaturalLanguageQuery() {
         let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
         let action = AssistantPlanner.plan(prompt: "How should I analyze drawdowns here?", source: source)
@@ -88,5 +189,135 @@ final class AssistantPlannerTests: XCTestCase {
 
         XCTAssertEqual(prompt, "give me the trading data for AAPL for the past 7 days")
         XCTAssertEqual(queriedSource, source)
+    }
+
+    // MARK: - /clear command
+
+    func testClearCommandReturnsClearConversation() {
+        let action = AssistantPlanner.plan(prompt: "/clear", source: nil)
+        XCTAssertEqual(action, .clearConversation)
+    }
+
+    func testClearCommandIsCaseInsensitive() {
+        let action = AssistantPlanner.plan(prompt: "/CLEAR", source: nil)
+        XCTAssertEqual(action, .clearConversation)
+    }
+
+    // MARK: - /sources command
+
+    func testSourcesCommandReturnsListSources() {
+        let action = AssistantPlanner.plan(prompt: "/sources", source: nil)
+        XCTAssertEqual(action, .listSources)
+    }
+
+    // MARK: - /copy command
+
+    func testCopyCommandReturnsCopyLastResult() {
+        let action = AssistantPlanner.plan(prompt: "/copy", source: nil)
+        XCTAssertEqual(action, .copyLastResult)
+    }
+
+    // MARK: - Top N extraction
+
+    func testExtractTopNFromTop10() {
+        XCTAssertEqual(AssistantPlanner.extractTopN(from: "top 10 results"), 10)
+    }
+
+    func testExtractTopNFromFirst5() {
+        XCTAssertEqual(AssistantPlanner.extractTopN(from: "first 5 records"), 5)
+    }
+
+    func testExtractTopNFromShow100Rows() {
+        XCTAssertEqual(AssistantPlanner.extractTopN(from: "show 100 rows"), 100)
+    }
+
+    func testExtractTopNReturnsNilForNoMatch() {
+        XCTAssertNil(AssistantPlanner.extractTopN(from: "what is the average price"))
+    }
+
+    func testExtractTopNRejectsZero() {
+        XCTAssertNil(AssistantPlanner.extractTopN(from: "top 0 results"))
+    }
+
+    // MARK: - Parquet column listing
+
+    func testParquetColumnsListsColumnNames() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "Show columns", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("column_name"))
+        XCTAssertTrue(plan.sql.contains("read_parquet"))
+    }
+
+    // MARK: - CSV column listing
+
+    func testCSVColumnsListsColumnNames() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv)
+        let action = AssistantPlanner.plan(prompt: "Show columns", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("column_name"))
+        XCTAssertTrue(plan.sql.contains("read_csv"))
+    }
+
+    // MARK: - Top N with parquet
+
+    func testParquetTopNUsesLimit() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "top 10", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("LIMIT 10"))
+        XCTAssertTrue(plan.sql.contains("read_parquet"))
+    }
+
+    // MARK: - Help text includes new commands
+
+    func testHelpIncludesClearAndSourcesAndCopy() {
+        let action = AssistantPlanner.plan(prompt: "/help", source: nil)
+
+        guard case let .assistantReply(reply) = action else {
+            return XCTFail("Expected assistant reply")
+        }
+
+        XCTAssertTrue(reply.contains("/clear"))
+        XCTAssertTrue(reply.contains("/sources"))
+        XCTAssertTrue(reply.contains("/copy"))
+    }
+
+    // MARK: - DuckDB table sizes
+
+    func testDuckDBTableSizeUsesMetadata() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "Show table sizes", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("duckdb_tables()"))
+    }
+
+    // MARK: - DuckDB summarize
+
+    func testDuckDBSummarizeUsesSummarize() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "Summarize data", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("SUMMARIZE"))
     }
 }

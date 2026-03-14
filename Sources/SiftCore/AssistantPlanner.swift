@@ -18,6 +18,9 @@ public enum AssistantAction: Equatable, Sendable {
     case providerPrompt(String)
     case naturalLanguageQuery(prompt: String, source: DataSource)
     case rawCommand(String)
+    case clearConversation
+    case listSources
+    case copyLastResult
 }
 
 public enum PromptLibrary {
@@ -64,10 +67,42 @@ public enum AssistantPlanner {
             return .assistantReply("Ask a question, paste SQL with `/sql ...`, or use one of the quick prompts.")
         }
 
-        if trimmed.caseInsensitiveCompare("What can you do?") == .orderedSame {
+        if trimmed.caseInsensitiveCompare("/clear") == .orderedSame {
+            return .clearConversation
+        }
+
+        if trimmed.caseInsensitiveCompare("/sources") == .orderedSame {
+            return .listSources
+        }
+
+        if trimmed.caseInsensitiveCompare("What can you do?") == .orderedSame || trimmed.caseInsensitiveCompare("/help") == .orderedSame {
             return .assistantReply(
-                "I can open a local `.duckdb` or `.parquet` source, map common prompts into real DuckDB commands, run raw DuckDB CLI arguments with `/duckdb ...`, and route broader analysis prompts through the selected provider."
+                """
+                **Sift Commands**
+
+                • **Ask naturally** — "Give me the trading data for AAPL" → I'll generate SQL and run it
+                • `/sql <query>` — Run raw SQL against the active source
+                • `/duckdb <args>` — Run raw DuckDB CLI arguments
+                • `/copy` — Copy the last query result to the clipboard
+                • `/clear` — Clear the conversation transcript
+                • `/sources` — List all attached data sources
+                • `/help` — Show this help message
+
+                **Quick Actions** (when a source is attached)
+                • "Preview rows" / "Show schema" / "Count rows" / "Summarize"
+                • "Show tables" / "Database info" (DuckDB sources)
+                • "Unique values in [column]" / "Top N [column]"
+
+                **Tips**
+                • Open `.duckdb`, `.parquet`, or `.csv` files as sources
+                • Any question with a source attached will auto-generate and execute SQL
+                • Without a source, questions go to your configured AI provider
+                """
             )
+        }
+
+        if trimmed.caseInsensitiveCompare("/copy") == .orderedSame {
+            return .copyLastResult
         }
 
         if trimmed.caseInsensitiveCompare("/duckdb") == .orderedSame {
@@ -134,22 +169,42 @@ public enum AssistantPlanner {
             )
         }
 
-        if lowercased.contains("preview") || lowercased.contains("show") || lowercased.contains("head") || lowercased.contains("first") || lowercased.contains("sample") {
-            return .command(
-                DuckDBCommandPlan(
-                    source: source,
-                    sql: "SELECT * FROM read_parquet('\(escapedPath)') LIMIT 25;",
-                    explanation: "Previewing up to 25 rows from \(source.displayName)."
-                )
-            )
-        }
-
         if lowercased.contains("summarize") || lowercased.contains("summary") || lowercased.contains("statistics") || lowercased.contains("stats") {
             return .command(
                 DuckDBCommandPlan(
                     source: source,
                     sql: "SUMMARIZE SELECT * FROM read_parquet('\(escapedPath)');",
                     explanation: "Generating column statistics for \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("columns") || lowercased.contains("column names") || lowercased.contains("fields") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM read_parquet('\(escapedPath)'));",
+                    explanation: "Listing column names and types from \(source.displayName)."
+                )
+            )
+        }
+
+        if let limit = extractTopN(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM read_parquet('\(escapedPath)') LIMIT \(limit);",
+                    explanation: "Showing top \(limit) rows from \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("preview") || lowercased.contains("show") || lowercased.contains("head") || lowercased.contains("first") || lowercased.contains("sample") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM read_parquet('\(escapedPath)') LIMIT 25;",
+                    explanation: "Previewing up to 25 rows from \(source.displayName)."
                 )
             )
         }
@@ -182,22 +237,42 @@ public enum AssistantPlanner {
             )
         }
 
-        if lowercased.contains("preview") || lowercased.contains("show") || lowercased.contains("head") || lowercased.contains("first") || lowercased.contains("sample") {
-            return .command(
-                DuckDBCommandPlan(
-                    source: source,
-                    sql: "SELECT * FROM read_csv('\(escapedPath)') LIMIT 25;",
-                    explanation: "Previewing up to 25 rows from \(source.displayName)."
-                )
-            )
-        }
-
         if lowercased.contains("summarize") || lowercased.contains("summary") || lowercased.contains("statistics") || lowercased.contains("stats") {
             return .command(
                 DuckDBCommandPlan(
                     source: source,
                     sql: "SUMMARIZE SELECT * FROM read_csv('\(escapedPath)');",
                     explanation: "Generating column statistics for \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("columns") || lowercased.contains("column names") || lowercased.contains("fields") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM read_csv('\(escapedPath)'));",
+                    explanation: "Listing column names and types from \(source.displayName)."
+                )
+            )
+        }
+
+        if let limit = extractTopN(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM read_csv('\(escapedPath)') LIMIT \(limit);",
+                    explanation: "Showing top \(limit) rows from \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("preview") || lowercased.contains("show") || lowercased.contains("head") || lowercased.contains("first") || lowercased.contains("sample") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM read_csv('\(escapedPath)') LIMIT 25;",
+                    explanation: "Previewing up to 25 rows from \(source.displayName)."
                 )
             )
         }
@@ -228,6 +303,26 @@ public enum AssistantPlanner {
             )
         }
 
+        if lowercased.contains("show columns") || lowercased.contains("list columns") || lowercased.contains("column names") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT table_name, column_name, data_type FROM information_schema.columns ORDER BY table_name, ordinal_position;",
+                    explanation: "Listing all columns across all tables in \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("table size") || lowercased.contains("row counts") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT table_name, estimated_size, column_count, index_count FROM duckdb_tables();",
+                    explanation: "Showing table sizes and metadata for \(source.displayName)."
+                )
+            )
+        }
+
         if lowercased.contains("summarize") || lowercased.contains("summary") || lowercased.contains("statistics") || lowercased.contains("stats") {
             return .command(
                 DuckDBCommandPlan(
@@ -238,7 +333,7 @@ public enum AssistantPlanner {
             )
         }
 
-        if lowercased.contains("describe") && !looksLikeSQL(prompt) {
+        if lowercased.contains("describe") || lowercased.contains("schema") {
             return .command(
                 DuckDBCommandPlan(
                     source: source,
@@ -288,6 +383,28 @@ public enum AssistantPlanner {
             .first?
             .lowercased() ?? ""
         return keywords.contains(firstToken)
+    }
+
+    /// Extracts a numeric limit from patterns like "top 10", "first 5 rows", "show 100 rows"
+    static func extractTopN(from lowercased: String) -> Int? {
+        let patterns = [
+            "top (\\d+)",
+            "first (\\d+)",
+            "last (\\d+)",
+            "show (\\d+) rows",
+            "show (\\d+) records",
+            "limit (\\d+)",
+        ]
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)),
+               let numRange = Range(match.range(at: 1), in: lowercased),
+               let num = Int(lowercased[numRange]),
+               num > 0, num <= 10000 {
+                return num
+            }
+        }
+        return nil
     }
 
     private static func escapeLiteral(_ path: String) -> String {

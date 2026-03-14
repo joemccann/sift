@@ -392,6 +392,110 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.transcript.contains(where: { $0.body.contains("I'd need to know your table schema") }))
     }
 
+    func testClearCommandClearsTranscript() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello"),
+                TranscriptItem(role: .user, title: "You", body: "Hi"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        XCTAssertTrue(viewModel.transcript.count >= 2)
+
+        viewModel.composerText = "/clear"
+        await viewModel.sendPrompt()
+
+        // After /clear, transcript is reset to initial welcome message
+        XCTAssertEqual(viewModel.transcript.count, 1)
+        XCTAssertTrue(viewModel.transcript.first?.body.contains("Welcome") == true)
+    }
+
+    func testSourcesCommandListsAttachedSources() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.duckdb"))
+
+        viewModel.composerText = "/sources"
+        await viewModel.sendPrompt()
+
+        let lastItem = viewModel.transcript.last
+        XCTAssertEqual(lastItem?.title, "Sources")
+        XCTAssertTrue(lastItem?.body.contains("a.parquet") == true)
+        XCTAssertTrue(lastItem?.body.contains("b.duckdb") == true)
+    }
+
+    func testSourcesCommandWithNoSourcesShowsGuidance() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/sources"
+        await viewModel.sendPrompt()
+
+        let lastItem = viewModel.transcript.last
+        XCTAssertEqual(lastItem?.title, "Sources")
+        XCTAssertTrue(lastItem?.body.contains("No sources attached") == true)
+    }
+
+    func testCopyCommandWithNoResultShowsGuidance() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/copy"
+        await viewModel.sendPrompt()
+
+        let lastItem = viewModel.transcript.last
+        XCTAssertEqual(lastItem?.title, "Nothing to Copy")
+    }
+
+    func testCopyCommandAfterExecutionCopiesToClipboard() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "SELECT 42;"],
+            sql: "SELECT 42;",
+            stdout: "42\n",
+            stderr: "",
+            exitCode: 0,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+        await viewModel.triggerPrompt("Preview this parquet file")
+
+        viewModel.composerText = "/copy"
+        await viewModel.sendPrompt()
+
+        let lastItem = viewModel.transcript.last
+        XCTAssertEqual(lastItem?.title, "Copied")
+        XCTAssertTrue(lastItem?.body.contains("clipboard") == true)
+    }
+
     func testMetalSnapshotReflectsSelectedSourceAndExecutionOutcome() async {
         let result = DuckDBExecutionResult(
             binaryPath: "/opt/homebrew/bin/duckdb",
