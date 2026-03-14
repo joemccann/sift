@@ -423,6 +423,7 @@ private struct TranscriptItemView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text(item.body)
+                    .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 switch item.kind {
