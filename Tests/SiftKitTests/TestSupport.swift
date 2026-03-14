@@ -17,6 +17,7 @@ struct MockExecutor: CommandExecuting {
 
 struct MockChatResponder: ProviderResponding {
     let response: ProviderChatResponse
+    var sqlResponse: ProviderSQLResponse?
 
     func respond(
         prompt: String,
@@ -26,6 +27,20 @@ struct MockChatResponder: ProviderResponding {
         providerStatuses: [ProviderStatus]
     ) async throws -> ProviderChatResponse {
         response
+    }
+
+    func generateSQL(
+        prompt: String,
+        source: DataSource,
+        transcript: [TranscriptItem],
+        settings: AppSettings,
+        providerStatuses: [ProviderStatus]
+    ) async throws -> ProviderSQLResponse {
+        sqlResponse ?? ProviderSQLResponse(
+            provider: response.provider,
+            sql: "SELECT 1;",
+            explanation: "Mock SQL generation"
+        )
     }
 }
 

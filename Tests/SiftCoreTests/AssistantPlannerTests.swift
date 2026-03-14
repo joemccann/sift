@@ -66,14 +66,27 @@ final class AssistantPlannerTests: XCTestCase {
         XCTAssertEqual(prompt, "Explain factor momentum")
     }
 
-    func testDuckDBUnknownPromptUsesProvider() {
+    func testDuckDBUnknownPromptUsesNaturalLanguageQuery() {
         let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
         let action = AssistantPlanner.plan(prompt: "How should I analyze drawdowns here?", source: source)
 
-        guard case let .providerPrompt(prompt) = action else {
-            return XCTFail("Expected provider prompt")
+        guard case let .naturalLanguageQuery(prompt, queriedSource) = action else {
+            return XCTFail("Expected natural language query, got \(action)")
         }
 
         XCTAssertEqual(prompt, "How should I analyze drawdowns here?")
+        XCTAssertEqual(queriedSource, source)
+    }
+
+    func testParquetUnknownPromptUsesNaturalLanguageQuery() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "give me the trading data for AAPL for the past 7 days", source: source)
+
+        guard case let .naturalLanguageQuery(prompt, queriedSource) = action else {
+            return XCTFail("Expected natural language query, got \(action)")
+        }
+
+        XCTAssertEqual(prompt, "give me the trading data for AAPL for the past 7 days")
+        XCTAssertEqual(queriedSource, source)
     }
 }

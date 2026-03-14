@@ -435,6 +435,16 @@ private struct TranscriptItemView: View {
                 case .text:
                     EmptyView()
 
+                case .thinking:
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Thinking…")
+                            .foregroundStyle(.secondary)
+                            .italic()
+                    }
+                    .padding(8)
+
                 case let .commandPreview(sql, sourceName):
                     VStack(alignment: .leading, spacing: 6) {
                         Text(sourceName)

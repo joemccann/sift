@@ -1,2 +1,3 @@
 {"type":"config","name":"Sift Functionality Improvements","metricName":"tests_passing","metricUnit":"","bestDirection":"higher"}
 {"run":1,"commit":"65baa29","metric":31,"metrics":{"build_time_s":1},"status":"keep","description":"Baseline: 31 tests passing, all features working","timestamp":1773518475050,"segment":0}
+{"run":2,"commit":"0cf7a14","metric":34,"metrics":{"build_time_s":3},"status":"keep","description":"Feature: source removal (removeSource, removeAllSources) with context menu and 3 new tests","timestamp":1773518533597,"segment":0}

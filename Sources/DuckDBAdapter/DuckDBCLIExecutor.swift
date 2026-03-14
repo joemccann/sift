@@ -68,7 +68,7 @@ public final class DuckDBCLIExecutor: @unchecked Sendable {
                 "-c",
                 plan.sql,
             ]
-        case .parquet:
+        case .parquet, .csv:
             arguments = [
                 ":memory:",
                 "-table",

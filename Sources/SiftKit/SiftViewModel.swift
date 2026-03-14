@@ -160,7 +160,7 @@ public final class SiftViewModel: ObservableObject {
                 TranscriptItem(
                     role: .system,
                     title: "Unsupported Source",
-                    body: "Only `.duckdb`, `.db`, and `.parquet` files are supported."
+                    body: "Only `.duckdb`, `.db`, `.parquet`, `.csv`, and `.tsv` files are supported."
                 )
             )
             return
@@ -243,10 +243,19 @@ public final class SiftViewModel: ObservableObject {
             )
         )
 
+        // Show thinking indicator immediately
+        let thinkingItem = TranscriptItem(
+            role: .assistant,
+            title: "Assistant",
+            body: "Thinking…",
+            kind: .thinking
+        )
+        appendTranscript(thinkingItem)
+
         let action = AssistantPlanner.plan(prompt: prompt, source: selectedSource)
         switch action {
         case let .assistantReply(reply):
-            appendTranscript(
+            replaceThinkingItem(thinkingItem.id, with:
                 TranscriptItem(
                     role: .assistant,
                     title: "Assistant",
@@ -255,7 +264,7 @@ public final class SiftViewModel: ObservableObject {
             )
 
         case let .command(plan):
-            appendTranscript(
+            replaceThinkingItem(thinkingItem.id, with:
                 TranscriptItem(
                     role: .assistant,
                     title: "Command Preview",
@@ -305,9 +314,13 @@ public final class SiftViewModel: ObservableObject {
             }
 
         case let .providerPrompt(providerPrompt):
-            await sendProviderPrompt(providerPrompt)
+            await sendProviderPrompt(providerPrompt, thinkingID: thinkingItem.id)
+
+        case let .naturalLanguageQuery(nlPrompt, source):
+            await executeNaturalLanguageQuery(prompt: nlPrompt, source: source, thinkingID: thinkingItem.id)
 
         case let .rawCommand(argumentsLine):
+            removeThinkingItem(thinkingItem.id)
             await executeRawDuckDB(argumentsLine: argumentsLine, source: .chatComposer)
         }
     }
@@ -419,7 +432,7 @@ public final class SiftViewModel: ObservableObject {
         manualDuckDBArguments = ""
     }
 
-    private func sendProviderPrompt(_ prompt: String) async {
+    private func sendProviderPrompt(_ prompt: String, thinkingID: UUID? = nil) async {
         isRunning = true
         defer { isRunning = false }
 
@@ -431,14 +444,20 @@ public final class SiftViewModel: ObservableObject {
                 settings: settings,
                 providerStatuses: providerStatuses
             )
-            appendTranscript(
-                TranscriptItem(
-                    role: .assistant,
-                    title: response.provider.displayName,
-                    body: response.text
-                )
+            let item = TranscriptItem(
+                role: .assistant,
+                title: response.provider.displayName,
+                body: response.text
             )
+            if let thinkingID {
+                replaceThinkingItem(thinkingID, with: item)
+            } else {
+                appendTranscript(item)
+            }
         } catch {
+            if let thinkingID {
+                removeThinkingItem(thinkingID)
+            }
             appendTranscript(
                 TranscriptItem(
                     role: .system,
@@ -447,6 +466,101 @@ public final class SiftViewModel: ObservableObject {
                 )
             )
         }
+    }
+
+    private func executeNaturalLanguageQuery(prompt: String, source: DataSource, thinkingID: UUID) async {
+        isRunning = true
+        defer { isRunning = false }
+
+        // Step 1: Ask the provider to generate SQL
+        do {
+            let sqlResponse = try await chatResponder.generateSQL(
+                prompt: prompt,
+                source: source,
+                transcript: transcript,
+                settings: settings,
+                providerStatuses: providerStatuses
+            )
+
+            guard !sqlResponse.sql.isEmpty else {
+                // Provider couldn't generate SQL — show the explanation as a normal response
+                replaceThinkingItem(thinkingID, with:
+                    TranscriptItem(
+                        role: .assistant,
+                        title: sqlResponse.provider.displayName,
+                        body: sqlResponse.explanation
+                    )
+                )
+                return
+            }
+
+            // Step 2: Show the generated SQL
+            let plan = DuckDBCommandPlan(
+                source: source,
+                sql: sqlResponse.sql,
+                explanation: sqlResponse.explanation.isEmpty ? "Generated SQL for: \(prompt)" : sqlResponse.explanation
+            )
+
+            replaceThinkingItem(thinkingID, with:
+                TranscriptItem(
+                    role: .assistant,
+                    title: "\(sqlResponse.provider.displayName) → SQL",
+                    body: plan.explanation,
+                    kind: .commandPreview(sql: plan.sql, sourceName: source.displayName)
+                )
+            )
+
+            // Step 3: Execute the SQL
+            guard let executor else {
+                appendTranscript(
+                    TranscriptItem(
+                        role: .system,
+                        title: "DuckDB Unavailable",
+                        body: "The app could not locate the `duckdb` binary. Install DuckDB or set DUCKDB_BINARY."
+                    )
+                )
+                return
+            }
+
+            isDiagnosticsDrawerPresented = true
+            let result = try await executor.execute(plan: plan)
+            lastExecution = result
+            appendTranscript(
+                TranscriptItem(
+                    role: .assistant,
+                    title: result.exitCode == 0 ? "Query Result" : "Query Error",
+                    body: result.exitCode == 0 ? "DuckDB finished running the generated query." : "DuckDB returned a non-zero exit code.",
+                    kind: .commandResult(
+                        exitCode: result.exitCode,
+                        stdout: result.stdout,
+                        stderr: result.stderr
+                    )
+                )
+            )
+        } catch {
+            removeThinkingItem(thinkingID)
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Query Generation Failed",
+                    body: error.localizedDescription
+                )
+            )
+        }
+    }
+
+    private func replaceThinkingItem(_ thinkingID: UUID, with item: TranscriptItem) {
+        if let index = transcript.firstIndex(where: { $0.id == thinkingID }) {
+            transcript[index] = item
+        } else {
+            transcript.append(item)
+        }
+        persistSnapshot()
+    }
+
+    private func removeThinkingItem(_ thinkingID: UUID) {
+        transcript.removeAll(where: { $0.id == thinkingID })
+        persistSnapshot()
     }
 
     private func appendTranscript(_ item: TranscriptItem) {

@@ -3,6 +3,7 @@ import Foundation
 public enum DataSourceKind: String, CaseIterable, Codable, Sendable {
     case parquet
     case duckdb
+    case csv
 }
 
 public struct DataSource: Identifiable, Codable, Equatable, Sendable {

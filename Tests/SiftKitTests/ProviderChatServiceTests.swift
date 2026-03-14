@@ -122,6 +122,40 @@ final class ProviderChatServiceTests: XCTestCase {
         )
     }
 
+    func testExtractSQLFromMarkdownCodeBlock() {
+        let text = """
+        Here's a query to get AAPL trading data:
+
+        ```sql
+        SELECT * FROM trades WHERE symbol = 'AAPL' ORDER BY date DESC LIMIT 7;
+        ```
+
+        This fetches the most recent 7 AAPL trades.
+        """
+
+        let (sql, explanation) = ProviderChatService.extractSQL(from: text)
+        XCTAssertEqual(sql, "SELECT * FROM trades WHERE symbol = 'AAPL' ORDER BY date DESC LIMIT 7;")
+        XCTAssertTrue(explanation.contains("AAPL trading data"))
+    }
+
+    func testExtractSQLFromUnfencedBlock() {
+        let text = """
+        ```
+        SELECT COUNT(*) FROM orders;
+        ```
+        """
+
+        let (sql, _) = ProviderChatService.extractSQL(from: text)
+        XCTAssertEqual(sql, "SELECT COUNT(*) FROM orders;")
+    }
+
+    func testExtractSQLReturnsEmptyWhenNoSQL() {
+        let text = "I don't know your schema. Please run SHOW TABLES first to see what's available."
+
+        let (sql, explanation) = ProviderChatService.extractSQL(from: text)
+        XCTAssertTrue(sql.isEmpty || explanation.contains("SHOW TABLES"))
+    }
+
     func testCodexReadsLastMessageFile() async throws {
         let executor = CapturingProcessExecutor()
         executor.handler = { _, arguments, _ in

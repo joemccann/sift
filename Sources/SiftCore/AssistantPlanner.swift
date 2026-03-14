@@ -16,6 +16,7 @@ public enum AssistantAction: Equatable, Sendable {
     case assistantReply(String)
     case command(DuckDBCommandPlan)
     case providerPrompt(String)
+    case naturalLanguageQuery(prompt: String, source: DataSource)
     case rawCommand(String)
 }
 
@@ -37,6 +38,13 @@ public enum PromptLibrary {
                 PromptChip(title: "Show schema", prompt: "Show the schema"),
                 PromptChip(title: "Count rows", prompt: "Count rows"),
                 PromptChip(title: "DuckDB CLI help", prompt: "/duckdb --help"),
+            ]
+        case .csv:
+            return [
+                PromptChip(title: "Preview rows", prompt: "Preview this CSV file"),
+                PromptChip(title: "Show schema", prompt: "Show the schema"),
+                PromptChip(title: "Count rows", prompt: "Count rows"),
+                PromptChip(title: "Summarize", prompt: "Summarize this data"),
             ]
         case .duckdb:
             return [
@@ -95,6 +103,8 @@ public enum AssistantPlanner {
         switch source.kind {
         case .parquet:
             return planForParquet(prompt: trimmed, source: source)
+        case .csv:
+            return planForCSV(prompt: trimmed, source: source)
         case .duckdb:
             return planForDuckDB(prompt: trimmed, source: source)
         }
@@ -124,13 +134,75 @@ public enum AssistantPlanner {
             )
         }
 
-        return .command(
-            DuckDBCommandPlan(
-                source: source,
-                sql: "SELECT * FROM read_parquet('\(escapedPath)') LIMIT 25;",
-                explanation: "Previewing up to 25 rows from \(source.displayName)."
+        if lowercased.contains("preview") || lowercased.contains("show") || lowercased.contains("head") || lowercased.contains("first") || lowercased.contains("sample") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM read_parquet('\(escapedPath)') LIMIT 25;",
+                    explanation: "Previewing up to 25 rows from \(source.displayName)."
+                )
             )
-        )
+        }
+
+        if lowercased.contains("summarize") || lowercased.contains("summary") || lowercased.contains("statistics") || lowercased.contains("stats") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SUMMARIZE SELECT * FROM read_parquet('\(escapedPath)');",
+                    explanation: "Generating column statistics for \(source.displayName)."
+                )
+            )
+        }
+
+        // Natural language query — ask the provider to generate SQL
+        return .naturalLanguageQuery(prompt: prompt, source: source)
+    }
+
+    private static func planForCSV(prompt: String, source: DataSource) -> AssistantAction {
+        let escapedPath = escapeLiteral(source.path)
+        let lowercased = prompt.lowercased()
+
+        if lowercased.contains("schema") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "DESCRIBE SELECT * FROM read_csv('\(escapedPath)');",
+                    explanation: "Inspecting the CSV schema for \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("count") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT COUNT(*) AS row_count FROM read_csv('\(escapedPath)');",
+                    explanation: "Counting rows in \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("preview") || lowercased.contains("show") || lowercased.contains("head") || lowercased.contains("first") || lowercased.contains("sample") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM read_csv('\(escapedPath)') LIMIT 25;",
+                    explanation: "Previewing up to 25 rows from \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("summarize") || lowercased.contains("summary") || lowercased.contains("statistics") || lowercased.contains("stats") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SUMMARIZE SELECT * FROM read_csv('\(escapedPath)');",
+                    explanation: "Generating column statistics for \(source.displayName)."
+                )
+            )
+        }
+
+        return .naturalLanguageQuery(prompt: prompt, source: source)
     }
 
     private static func planForDuckDB(prompt: String, source: DataSource) -> AssistantAction {
@@ -156,6 +228,26 @@ public enum AssistantPlanner {
             )
         }
 
+        if lowercased.contains("summarize") || lowercased.contains("summary") || lowercased.contains("statistics") || lowercased.contains("stats") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SUMMARIZE SELECT * FROM (SHOW TABLES);",
+                    explanation: "Generating summary statistics for \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("describe") && !looksLikeSQL(prompt) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "DESCRIBE;",
+                    explanation: "Describing the schema of \(source.displayName)."
+                )
+            )
+        }
+
         if looksLikeSQL(prompt) {
             return .command(
                 DuckDBCommandPlan(
@@ -166,7 +258,8 @@ public enum AssistantPlanner {
             )
         }
 
-        return .providerPrompt(prompt)
+        // Natural language query — ask the provider to generate SQL
+        return .naturalLanguageQuery(prompt: prompt, source: source)
     }
 
     private static func rawSQL(from prompt: String) -> String? {

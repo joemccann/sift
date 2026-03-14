@@ -14,7 +14,7 @@ enum SourcePicker {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = []
-        panel.message = "Choose a local .duckdb, .db, or .parquet file."
+        panel.message = "Choose a local .duckdb, .db, .parquet, .csv, or .tsv file."
         panel.prompt = "Open"
 
         return panel.runModal() == .OK ? panel.url : nil

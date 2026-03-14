@@ -8,6 +8,7 @@ public enum TranscriptRole: String, Codable, Sendable {
 
 public enum TranscriptKind: Equatable, Sendable, Codable {
     case text
+    case thinking
     case commandPreview(sql: String, sourceName: String)
     case rawCommandPreview(command: String)
     case commandResult(exitCode: Int32, stdout: String, stderr: String)
@@ -24,6 +25,7 @@ public enum TranscriptKind: Equatable, Sendable, Codable {
 
     private enum KindType: String, Codable {
         case text
+        case thinking
         case commandPreview
         case rawCommandPreview
         case commandResult
@@ -36,6 +38,8 @@ public enum TranscriptKind: Equatable, Sendable, Codable {
         switch type {
         case .text:
             self = .text
+        case .thinking:
+            self = .thinking
         case .commandPreview:
             self = .commandPreview(
                 sql: try container.decode(String.self, forKey: .sql),
@@ -60,6 +64,8 @@ public enum TranscriptKind: Equatable, Sendable, Codable {
         switch self {
         case .text:
             try container.encode(KindType.text, forKey: .type)
+        case .thinking:
+            try container.encode(KindType.thinking, forKey: .type)
         case let .commandPreview(sql, sourceName):
             try container.encode(KindType.commandPreview, forKey: .type)
             try container.encode(sql, forKey: .sql)

@@ -243,6 +243,8 @@ private final class MetalWorkspaceRenderer: NSObject, MTKViewDelegate {
             0
         case .duckdb:
             1
+        case .csv:
+            2
         case nil:
             -1
         }

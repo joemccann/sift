@@ -273,6 +273,125 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.transcript.last?.title, "Sources Cleared")
     }
 
+    func testThinkingIndicatorAppearsAndIsReplacedForAssistantReply() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.composerText = "What can you do?"
+
+        await viewModel.sendPrompt()
+
+        // The thinking item should have been replaced, not left in the transcript
+        let thinkingItems = viewModel.transcript.filter { $0.kind == .thinking }
+        XCTAssertTrue(thinkingItems.isEmpty, "Thinking items should be replaced after response")
+
+        // The response should be present
+        let assistantReplies = viewModel.transcript.filter { $0.role == .assistant && $0.kind == .text }
+        XCTAssertFalse(assistantReplies.isEmpty, "Assistant reply should be present")
+    }
+
+    func testThinkingIndicatorAppearsAndIsReplacedForProviderPrompt() async {
+        let response = ProviderChatResponse(provider: .claude, text: "Here is the analysis.")
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: response),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.composerText = "Explain factor momentum"
+
+        await viewModel.sendPrompt()
+
+        let thinkingItems = viewModel.transcript.filter { $0.kind == .thinking }
+        XCTAssertTrue(thinkingItems.isEmpty, "Thinking items should be replaced after provider response")
+        XCTAssertEqual(viewModel.transcript.last?.body, "Here is the analysis.")
+    }
+
+    func testNaturalLanguageQueryGeneratesSQLAndExecutes() async {
+        let duckResult = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "SELECT * FROM trades WHERE symbol = 'AAPL';"],
+            sql: "SELECT * FROM trades WHERE symbol = 'AAPL';",
+            stdout: "symbol | price\nAAPL   | 185.50\n",
+            stderr: "",
+            exitCode: 0,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let sqlResponse = ProviderSQLResponse(
+            provider: .claude,
+            sql: "SELECT * FROM trades WHERE symbol = 'AAPL';",
+            explanation: "Fetching AAPL trades from the trades table."
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: duckResult),
+            chatResponder: MockChatResponder(
+                response: .init(provider: .claude, text: "ignored"),
+                sqlResponse: sqlResponse
+            ),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"))
+
+        await viewModel.triggerPrompt("give me the trading data for AAPL")
+
+        // Should have: user message, source attached, SQL preview, command result
+        let thinkingItems = viewModel.transcript.filter { $0.kind == .thinking }
+        XCTAssertTrue(thinkingItems.isEmpty, "No thinking items should remain")
+
+        // Find the SQL preview
+        let sqlPreviews = viewModel.transcript.filter {
+            if case .commandPreview = $0.kind { return true }
+            return false
+        }
+        XCTAssertFalse(sqlPreviews.isEmpty, "Should contain a SQL preview")
+
+        // Find the result
+        let results = viewModel.transcript.filter {
+            if case .commandResult = $0.kind { return true }
+            return false
+        }
+        XCTAssertFalse(results.isEmpty, "Should contain query result")
+        XCTAssertEqual(viewModel.lastExecution?.stdout, "symbol | price\nAAPL   | 185.50\n")
+    }
+
+    func testNaturalLanguageQueryWithEmptySQLFallsBackToExplanation() async {
+        let sqlResponse = ProviderSQLResponse(
+            provider: .claude,
+            sql: "",
+            explanation: "I'd need to know your table schema to generate a query. Try running SHOW TABLES first."
+        )
+
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(
+                response: .init(provider: .claude, text: "ignored"),
+                sqlResponse: sqlResponse
+            ),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"))
+
+        await viewModel.triggerPrompt("what are the best performing stocks?")
+
+        let thinkingItems = viewModel.transcript.filter { $0.kind == .thinking }
+        XCTAssertTrue(thinkingItems.isEmpty)
+
+        // Should fall back to showing the explanation text
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.body.contains("I'd need to know your table schema") }))
+    }
+
     func testMetalSnapshotReflectsSelectedSourceAndExecutionOutcome() async {
         let result = DuckDBExecutionResult(
             binaryPath: "/opt/homebrew/bin/duckdb",

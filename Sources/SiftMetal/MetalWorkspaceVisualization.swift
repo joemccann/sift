@@ -85,6 +85,8 @@ struct MetalWorkspaceVisualization: Equatable, Sendable {
             sourceSeed = 0.23
         case .duckdb:
             sourceSeed = 0.59
+        case .csv:
+            sourceSeed = 0.41
         case nil:
             sourceSeed = 0.11
         }
