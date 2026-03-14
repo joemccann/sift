@@ -51,4 +51,20 @@ fi
 /usr/bin/plutil -replace NSHighResolutionCapable -bool YES "$PLIST_PATH"
 /usr/bin/plutil -replace NSPrincipalClass -string "NSApplication" "$PLIST_PATH"
 
+# Entitlements for file access so macOS remembers user approval between launches.
+ENTITLEMENTS_PATH="$BUILD_DIR/Sift.entitlements"
+cat > "$ENTITLEMENTS_PATH" <<ENTITLEMENTS_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+</dict>
+</plist>
+ENTITLEMENTS_EOF
+
+# Ad-hoc code sign so macOS can persist TCC decisions across launches.
+/usr/bin/codesign --force --sign - --entitlements "$ENTITLEMENTS_PATH" "$APP_DIR"
+
 print -- "$APP_DIR"
