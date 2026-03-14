@@ -1334,6 +1334,15 @@ final class ParquetMetadataTests: XCTestCase {
     }
 }
 
+// MARK: - /stats command
+
+final class StatsCommandTests: XCTestCase {
+    func testStatsCommandReturnsShowCommandCount() {
+        let action = AssistantPlanner.plan(prompt: "/stats", source: nil)
+        XCTAssertEqual(action, .showCommandCount)
+    }
+}
+
 // MARK: - PromptChip model
 
 final class PromptChipModelTests: XCTestCase {

@@ -1365,6 +1365,29 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.commandCount, 1)
     }
 
+    func testStatsCommandShowsSessionStats() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Welcome"),
+                TranscriptItem(role: .user, title: "You", body: "Hi"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+
+        viewModel.composerText = "/stats"
+        await viewModel.sendPrompt()
+
+        let statsItems = viewModel.transcript.filter { $0.title == "Session Stats" }
+        XCTAssertFalse(statsItems.isEmpty)
+        let body = statsItems.last!.body
+        XCTAssertTrue(body.contains("Sources: 1"))
+        XCTAssertTrue(body.contains("User messages:"))
+    }
+
     func testUserAndSystemMessageCounts() {
         let viewModel = SiftViewModel(
             executor: nil,

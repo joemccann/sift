@@ -383,6 +383,25 @@ public final class SiftViewModel: ObservableObject {
             removeThinkingItem(thinkingItem.id)
             exportTranscriptToClipboard()
 
+        case .showCommandCount:
+            let stats = [
+                "**Session Statistics**",
+                "",
+                "• Messages: \(transcript.count)",
+                "• User messages: \(userMessageCount)",
+                "• System messages: \(systemMessageCount)",
+                "• Commands executed: \(commandCount)",
+                "• Sources: \(sources.count)",
+                "• Bookmarks: \(settings.bookmarks.count)",
+            ]
+            replaceThinkingItem(thinkingItem.id, with:
+                TranscriptItem(
+                    role: .assistant,
+                    title: "Session Stats",
+                    body: stats.joined(separator: "\n")
+                )
+            )
+
         case .undoLastMessage:
             removeThinkingItem(thinkingItem.id)
             undoLastUserMessage()

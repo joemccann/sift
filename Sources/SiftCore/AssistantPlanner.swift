@@ -29,6 +29,7 @@ public enum AssistantAction: Equatable, Sendable {
     case showBookmarks
     case bookmarkLastCommand
     case undoLastMessage
+    case showCommandCount
 }
 
 public enum PromptLibrary {
@@ -116,6 +117,10 @@ public enum AssistantPlanner {
 
         if trimmed.caseInsensitiveCompare("/undo") == .orderedSame {
             return .undoLastMessage
+        }
+
+        if trimmed.caseInsensitiveCompare("/stats") == .orderedSame {
+            return .showCommandCount
         }
 
         if trimmed.caseInsensitiveCompare("What can you do?") == .orderedSame || trimmed.caseInsensitiveCompare("/help") == .orderedSame {
