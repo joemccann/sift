@@ -195,6 +195,30 @@ public final class SiftViewModel: ObservableObject {
         importSource(url: url)
     }
 
+    public func importSources(urls: [URL]) -> Int {
+        var imported = 0
+        for url in urls {
+            guard let source = DataSource.from(url: url) else { continue }
+            if sources.first(where: { $0.url == source.url }) == nil {
+                sources.insert(source, at: 0)
+                imported += 1
+            }
+        }
+        if imported > 0 {
+            selectedSource = sources.first
+            selectedDestination = .assistant
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Sources Imported",
+                    body: "Imported \(imported) new source\(imported == 1 ? "" : "s")."
+                )
+            )
+            persistSnapshot()
+        }
+        return imported
+    }
+
     public func selectSource(_ source: DataSource) {
         selectedSource = source
         selectedDestination = .assistant

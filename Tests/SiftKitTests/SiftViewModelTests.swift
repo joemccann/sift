@@ -1075,6 +1075,113 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.metalSnapshot.sourceCount, 2)
     }
 
+    func testBatchImportImportsMultipleSources() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let urls = [
+            URL(fileURLWithPath: "/tmp/a.parquet"),
+            URL(fileURLWithPath: "/tmp/b.csv"),
+            URL(fileURLWithPath: "/tmp/c.json"),
+        ]
+
+        let count = viewModel.importSources(urls: urls)
+        XCTAssertEqual(count, 3)
+        XCTAssertEqual(viewModel.sources.count, 3)
+        XCTAssertNotNil(viewModel.selectedSource)
+    }
+
+    func testBatchImportSkipsUnsupportedFiles() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let urls = [
+            URL(fileURLWithPath: "/tmp/a.parquet"),
+            URL(fileURLWithPath: "/tmp/b.xlsx"),
+            URL(fileURLWithPath: "/tmp/c.txt"),
+        ]
+
+        let count = viewModel.importSources(urls: urls)
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(viewModel.sources.count, 1)
+    }
+
+    func testBatchImportSkipsDuplicates() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+
+        let urls = [
+            URL(fileURLWithPath: "/tmp/a.parquet"),
+            URL(fileURLWithPath: "/tmp/b.csv"),
+        ]
+
+        let count = viewModel.importSources(urls: urls)
+        XCTAssertEqual(count, 1) // Only b.csv is new
+        XCTAssertEqual(viewModel.sources.count, 2)
+    }
+
+    func testBatchImportReturnsZeroForEmptyArray() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let count = viewModel.importSources(urls: [])
+        XCTAssertEqual(count, 0)
+    }
+
+    func testProviderStatusForKnownProvider() {
+        let secretStore = MemorySecretStore(keys: [.claude: "key"])
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: secretStore,
+            environment: ["PATH": "/bin"]
+        )
+
+        let status = viewModel.status(for: .claude)
+        XCTAssertNotNil(status)
+        XCTAssertEqual(status?.provider, .claude)
+    }
+
+    func testRunRawDuckDBCommandEmptyIsIgnored() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.manualDuckDBArguments = "  "
+        let countBefore = viewModel.transcript.count
+
+        await viewModel.runRawDuckDBCommand()
+
+        XCTAssertEqual(viewModel.transcript.count, countBefore)
+    }
+
     func testDiagnosticsDrawerStartsClosed() {
         let viewModel = SiftViewModel(
             executor: nil,
