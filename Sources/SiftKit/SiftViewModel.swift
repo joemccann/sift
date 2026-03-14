@@ -352,6 +352,31 @@ public final class SiftViewModel: ObservableObject {
         TranscriptAnalytics.characterCount(in: transcript)
     }
 
+    /// Error results in the transcript
+    public var errorResults: [TranscriptItem] {
+        TranscriptFilter.errorResults(in: transcript)
+    }
+
+    /// Successful results in the transcript
+    public var successResults: [TranscriptItem] {
+        TranscriptFilter.successResults(in: transcript)
+    }
+
+    /// Number of favorite sources
+    public var favoriteCount: Int {
+        favoriteSources.count
+    }
+
+    /// Whether any source has an alias
+    public var hasAliasedSources: Bool {
+        sources.contains { $0.alias != nil }
+    }
+
+    /// Sources grouped by directory
+    public var sourcesByDirectory: [String: [DataSource]] {
+        Dictionary(grouping: sources, by: \.directoryName)
+    }
+
     /// Import a source from a remote URL string
     public func importRemoteSource(urlString: String) {
         guard let source = DataSource.fromRemoteURL(urlString) else {

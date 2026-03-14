@@ -1814,6 +1814,75 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sources.first?.displayName, "data.parquet")
     }
 
+    // MARK: - Error/success results
+
+    func testErrorAndSuccessResults() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "OK", body: "good", kind: .commandResult(exitCode: 0, stdout: "1", stderr: "")),
+                TranscriptItem(role: .assistant, title: "Bad", body: "err", kind: .commandResult(exitCode: 1, stdout: "", stderr: "error")),
+                TranscriptItem(role: .assistant, title: "OK2", body: "good2", kind: .commandResult(exitCode: 0, stdout: "2", stderr: "")),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertEqual(viewModel.errorResults.count, 1)
+        XCTAssertEqual(viewModel.successResults.count, 2)
+    }
+
+    func testFavoriteCount() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.csv"))
+        viewModel.toggleFavorite(for: viewModel.sources.first!.id)
+
+        XCTAssertEqual(viewModel.favoriteCount, 1)
+    }
+
+    func testHasAliasedSources() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+        XCTAssertFalse(viewModel.hasAliasedSources)
+
+        viewModel.setSourceAlias("Prices", for: viewModel.sources.first!.id)
+        XCTAssertTrue(viewModel.hasAliasedSources)
+    }
+
+    func testSourcesByDirectory() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/data/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/data/b.csv"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/other/c.json"))
+
+        let grouped = viewModel.sourcesByDirectory
+        XCTAssertEqual(grouped["data"]?.count, 2)
+        XCTAssertEqual(grouped["other"]?.count, 1)
+    }
+
     // MARK: - Source favorites
 
     func testToggleFavorite() {
