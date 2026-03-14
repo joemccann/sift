@@ -2505,3 +2505,123 @@ final class DuckDBTopNByColumnTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB show indices alias
+
+final class DuckDBShowIndicesTests: XCTestCase {
+    func testShowIndicesUsesIndexesQuery() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "Show indices", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("duckdb_indexes()"))
+    }
+
+    func testListViewsUsesViewsQuery() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "List views", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("duckdb_views()"))
+    }
+}
+
+// MARK: - Various planner patterns
+
+final class PlannerPatternCoverageTests: XCTestCase {
+    func testDuckDBDatabaseSizePattern() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "database size", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("database_list"))
+    }
+
+    func testDuckDBMemoryInfoPattern() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "memory info", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("database_size"))
+    }
+
+    func testDuckDBVersionPattern() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "What version is this?", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("PRAGMA version"))
+    }
+
+    func testParquetSampleUsesSample() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "sample this", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("LIMIT 25")) // "sample" matches preview
+    }
+
+    func testCSVTopNExtractsLimit() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv)
+        let action = AssistantPlanner.plan(prompt: "top 5", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("LIMIT 5"))
+    }
+
+    func testJSONTopNExtractsLimit() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let action = AssistantPlanner.plan(prompt: "first 3", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("LIMIT 3"))
+    }
+
+    func testDuckDBTableSizePattern() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "table size", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("duckdb_tables()"))
+    }
+
+    func testDuckDBColumnNamesPattern() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "column names", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("information_schema.columns"))
+    }
+
+    func testParquetSchemaDescribes() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "schema", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("DESCRIBE"))
+    }
+
+    func testDuckDBExtensionsPattern() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "show extensions", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("duckdb_extensions()"))
+    }
+}
+
