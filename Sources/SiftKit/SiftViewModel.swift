@@ -238,6 +238,24 @@ public final class SiftViewModel: ObservableObject {
         persistSnapshot()
     }
 
+    /// Find sources by kind
+    public func sources(ofKind kind: DataSourceKind) -> [DataSource] {
+        sources.filter { $0.kind == kind }
+    }
+
+    /// Check if there are any command errors in the transcript
+    public var hasCommandErrors: Bool {
+        transcript.contains {
+            if case let .commandResult(exitCode, _, _) = $0.kind { return exitCode != 0 }
+            return false
+        }
+    }
+
+    /// Get the last N transcript items
+    public func lastTranscriptItems(_ count: Int) -> [TranscriptItem] {
+        Array(transcript.suffix(max(0, count)))
+    }
+
     /// Compact transcript — only user messages and command results
     public var compactTranscript: [TranscriptItem] {
         transcript.filter { item in

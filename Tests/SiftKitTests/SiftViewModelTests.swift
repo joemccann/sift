@@ -1814,6 +1814,94 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sources.first?.displayName, "data.parquet")
     }
 
+    // MARK: - Source kind filtering
+
+    func testSourcesOfKind() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/c.csv"))
+
+        XCTAssertEqual(viewModel.sources(ofKind: .parquet).count, 2)
+        XCTAssertEqual(viewModel.sources(ofKind: .csv).count, 1)
+        XCTAssertEqual(viewModel.sources(ofKind: .duckdb).count, 0)
+    }
+
+    // MARK: - Command error detection
+
+    func testHasCommandErrorsWhenNoErrors() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "Result", body: "ok",
+                               kind: .commandResult(exitCode: 0, stdout: "1", stderr: "")),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertFalse(viewModel.hasCommandErrors)
+    }
+
+    func testHasCommandErrorsWhenErrorPresent() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "Error", body: "fail",
+                               kind: .commandResult(exitCode: 1, stdout: "", stderr: "error")),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertTrue(viewModel.hasCommandErrors)
+    }
+
+    // MARK: - Last N items
+
+    func testLastTranscriptItems() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .user, title: "You", body: "A"),
+                TranscriptItem(role: .assistant, title: "A", body: "B"),
+                TranscriptItem(role: .user, title: "You", body: "C"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let last2 = viewModel.lastTranscriptItems(2)
+        XCTAssertEqual(last2.count, 2)
+        XCTAssertEqual(last2.first?.body, "B")
+        XCTAssertEqual(last2.last?.body, "C")
+    }
+
+    func testLastTranscriptItemsWithZero() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .user, title: "You", body: "A"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertTrue(viewModel.lastTranscriptItems(0).isEmpty)
+        XCTAssertTrue(viewModel.lastTranscriptItems(-1).isEmpty)
+    }
+
     // MARK: - Tag on nonexistent item
 
     func testAddTagToNonexistentItemDoesNothing() {
