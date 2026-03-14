@@ -1631,6 +1631,71 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
     }
 
+    // MARK: - Transcript pagination
+
+    func testTranscriptPageReturnsCorrectSlice() {
+        var items: [TranscriptItem] = []
+        for i in 0..<25 {
+            items.append(TranscriptItem(role: .user, title: "You", body: "msg \(i)"))
+        }
+
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: items)),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let page0 = viewModel.transcriptPage(page: 0, pageSize: 10)
+        XCTAssertEqual(page0.count, 10)
+
+        let page1 = viewModel.transcriptPage(page: 1, pageSize: 10)
+        XCTAssertEqual(page1.count, 10)
+
+        let page2 = viewModel.transcriptPage(page: 2, pageSize: 10)
+        XCTAssertEqual(page2.count, 5) // Last page partial
+
+        let page3 = viewModel.transcriptPage(page: 3, pageSize: 10)
+        XCTAssertTrue(page3.isEmpty) // Beyond end
+    }
+
+    func testTranscriptPageCountCalculation() {
+        var items: [TranscriptItem] = []
+        for i in 0..<25 {
+            items.append(TranscriptItem(role: .user, title: "You", body: "msg \(i)"))
+        }
+
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: items)),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertEqual(viewModel.transcriptPageCount(pageSize: 10), 3)
+        XCTAssertEqual(viewModel.transcriptPageCount(pageSize: 25), 1)
+        XCTAssertEqual(viewModel.transcriptPageCount(pageSize: 100), 1)
+    }
+
+    func testTranscriptPageEdgeCases() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // Negative page
+        XCTAssertTrue(viewModel.transcriptPage(page: -1).isEmpty)
+
+        // Zero page size
+        XCTAssertTrue(viewModel.transcriptPage(page: 0, pageSize: 0).isEmpty)
+        XCTAssertEqual(viewModel.transcriptPageCount(pageSize: 0), 0)
+    }
+
     // MARK: - Appearance setting
 
     func testDefaultAppearanceIsSystem() {

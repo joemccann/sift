@@ -1,24 +1,19 @@
 # Autoresearch Ideas
 
 ## Promising Next Features
-- Query cancellation — add `cancelRunningCommand()` with Task.cancel(), test isRunning state transitions
-- Tab completion for commands — `commandCompletions(prefix:)` returning matching slash commands
 - Transcript pagination — computed property for paginated transcript slices
-- Source file watching — detect file modification timestamp changes  
-- Theme/appearance settings — dark/light mode preference in AppSettings
-- DuckDB table-specific preview — "preview trades" → `SELECT * FROM trades LIMIT 25;`
+- Source file watching — detect file modification timestamp changes
 - Cross-source queries — query across multiple files with UNION
-- Query template system — parameterized saved queries
-- Transcript item pinning — pin important results
-- Source metadata display — show file size, row count estimate on import
+- DuckDB "summarize [tablename]" — table-specific SUMMARIZE
+- Query history deduplication — avoid duplicate entries in history
+- Prompt suggestion based on source schema — context-aware suggestions
+- Transcript item tagging — add labels/tags to items
+- Session export to file — save full session as JSON
+- Markdown rendering hints — detect and format code blocks, tables
 
-## Completed (prune from backlog)
-- Source removal, CSV/TSV, /help, JSON/JSONL/NDJSON
-- /clear, /sources, /copy, /rerun, /history, /export, /status, /version, /bookmark, /bookmarks, /undo, /stats
-- Natural language → SQL, thinking indicator, conversation search
-- Column listing, top-N, random sampling, parquet metadata/schema
-- DuckDB describe [table], show views/indexes/version/memory/extensions/settings
-- Path escaping, batch import, duplicate prevention
-- DataSourceKind properties, transcript role filtering, source sorting
-- Error handling for DuckDB unavailable, provider errors
-- Bookmark persistence, command counting
+## Completed (35 experiments)
+All original backlog items done plus: /clear, /sources, /copy, /rerun, /history, /export,
+/status, /version, /bookmark, /bookmarks, /undo, /stats, /info, /pins, /reset commands.
+Tab completion, query cancellation state, bookmarks, pinning, batch import, source validation,
+appearance settings, DuckDB table-specific preview/count/sample/describe patterns,
+parquet metadata, JSON support, comprehensive error handling, 400+ tests.

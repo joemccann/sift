@@ -1890,6 +1890,54 @@ final class DataSourceValidationTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB summarize [tablename]
+
+final class DuckDBSummarizeTableTests: XCTestCase {
+    func testSummarizeTradesGeneratesSummarize() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "summarize trades", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("SUMMARIZE trades"))
+    }
+
+    func testStatsForOrdersGeneratesSummarize() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "stats for orders", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("SUMMARIZE orders"))
+    }
+
+    func testExtractSummarizeTargetReturnsTableName() {
+        XCTAssertEqual(AssistantPlanner.extractSummarizeTarget(from: "summarize trades"), "trades")
+        XCTAssertEqual(AssistantPlanner.extractSummarizeTarget(from: "stats for users"), "users")
+    }
+
+    func testExtractSummarizeTargetRejectsReserved() {
+        XCTAssertNil(AssistantPlanner.extractSummarizeTarget(from: "summarize the"))
+        XCTAssertNil(AssistantPlanner.extractSummarizeTarget(from: "summarize data"))
+    }
+
+    func testGenericSummarizeFallsToGenericPattern() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "Summarize the data", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        // Should hit the generic summarize, not table-specific
+        XCTAssertTrue(plan.sql.contains("SUMMARIZE"))
+    }
+}
+
 // MARK: - DuckDB sample [tablename]
 
 final class DuckDBSampleTableTests: XCTestCase {

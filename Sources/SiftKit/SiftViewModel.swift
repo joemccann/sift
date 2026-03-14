@@ -815,6 +815,21 @@ public final class SiftViewModel: ObservableObject {
         return "\(transcript.count) items, \(userCount) user messages, \(commandCount) commands (\(successCount) ✓, \(failureCount) ✗)"
     }
 
+    /// Paginate the transcript into pages of a given size
+    public func transcriptPage(page: Int, pageSize: Int = 20) -> [TranscriptItem] {
+        guard pageSize > 0, page >= 0 else { return [] }
+        let start = page * pageSize
+        guard start < transcript.count else { return [] }
+        let end = min(start + pageSize, transcript.count)
+        return Array(transcript[start..<end])
+    }
+
+    /// Total number of transcript pages
+    public func transcriptPageCount(pageSize: Int = 20) -> Int {
+        guard pageSize > 0 else { return 0 }
+        return max(1, (transcript.count + pageSize - 1) / pageSize)
+    }
+
     /// All command results in the transcript
     public var commandResults: [TranscriptItem] {
         transcript.filter {

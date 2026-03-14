@@ -591,6 +591,16 @@ public enum AssistantPlanner {
             )
         }
 
+        if let tableName = extractSummarizeTarget(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SUMMARIZE \(tableName);",
+                    explanation: "Generating column statistics for \(tableName) in \(source.displayName)."
+                )
+            )
+        }
+
         if lowercased.contains("summarize") || lowercased.contains("summary") || lowercased.contains("statistics") || lowercased.contains("stats") {
             return .command(
                 DuckDBCommandPlan(
@@ -721,6 +731,31 @@ public enum AssistantPlanner {
             .first?
             .lowercased() ?? ""
         return keywords.contains(firstToken)
+    }
+
+    /// Extracts a table name from "summarize [table]" or "stats for [table]"
+    static func extractSummarizeTarget(from lowercased: String) -> String? {
+        let patterns = [
+            "summarize (\\w+)",
+            "summary of (\\w+)",
+            "stats for (\\w+)",
+            "statistics for (\\w+)",
+        ]
+        let reservedWords: Set<String> = [
+            "the", "this", "data", "all", "my", "a", "it", "select",
+        ]
+
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)),
+               let nameRange = Range(match.range(at: 1), in: lowercased) {
+                let name = String(lowercased[nameRange])
+                if !reservedWords.contains(name), name.count > 1 {
+                    return name
+                }
+            }
+        }
+        return nil
     }
 
     /// Extracts a table name from "sample [table]" or "random [table]"
