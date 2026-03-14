@@ -115,14 +115,7 @@ public struct SiftRootView: View {
                     }
                 }
 
-                Button {
-                    viewModel.promptForDirectoryScan()
-                } label: {
-                    Label("Scan Directory", systemImage: "folder.badge.questionmark")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("sidebar-scan-directory")
+                ScanDirectoryButton(viewModel: viewModel)
             }
         }
         .listStyle(.sidebar)
@@ -565,6 +558,56 @@ private struct TranscriptItemView: View {
             return AnyShapeStyle(.tint.opacity(0.18))
         case .system:
             return AnyShapeStyle(.tertiary.opacity(0.22))
+        }
+    }
+}
+
+private struct ScanDirectoryButton: View {
+    @ObservedObject var viewModel: SiftViewModel
+    @State private var isPopoverPresented = false
+    @State private var scanDepth = SourceScanner.defaultMaxDepth
+
+    var body: some View {
+        Button {
+            isPopoverPresented = true
+        } label: {
+            Label("Scan Directory", systemImage: "folder.badge.questionmark")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .accessibilityIdentifier("sidebar-scan-directory")
+        .popover(isPresented: $isPopoverPresented, arrowEdge: .trailing) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Scan for Sources")
+                    .font(.headline)
+
+                HStack(spacing: 8) {
+                    Text("Depth")
+                    Stepper("\(scanDepth)", value: $scanDepth, in: 1...10)
+                        .frame(width: 110)
+                    Text(depthHint)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Button("Choose Folder & Scan") {
+                    isPopoverPresented = false
+                    viewModel.promptForDirectoryScan(maxDepth: scanDepth)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+            }
+            .padding(16)
+            .frame(width: 300)
+        }
+    }
+
+    private var depthHint: String {
+        switch scanDepth {
+        case 1: "shallow"
+        case 2...3: "moderate"
+        case 4...6: "deep"
+        default: "very deep"
         }
     }
 }

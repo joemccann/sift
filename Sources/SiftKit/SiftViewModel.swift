@@ -191,11 +191,11 @@ public final class SiftViewModel: ObservableObject {
     }
 
     @MainActor
-    public func promptForDirectoryScan() {
+    public func promptForDirectoryScan(maxDepth: Int = SourceScanner.defaultMaxDepth) {
         guard let url = SourcePicker.pickDirectory() else {
             return
         }
-        scanDirectory(url)
+        scanDirectory(url, maxDepth: maxDepth)
     }
 
     public func selectSource(_ source: DataSource) {
@@ -377,8 +377,8 @@ public final class SiftViewModel: ObservableObject {
         persistSnapshot()
     }
 
-    public func scanDirectory(_ directory: URL) {
-        let discovered = SourceScanner.scan(directory: directory)
+    public func scanDirectory(_ directory: URL, maxDepth: Int? = nil) {
+        let discovered = SourceScanner.scan(directory: directory, maxDepth: maxDepth)
         let existingPaths = Set(sources.map { $0.url.standardizedFileURL })
         let newSources = discovered.filter { !existingPaths.contains($0.url.standardizedFileURL) }
 
