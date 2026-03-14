@@ -455,6 +455,10 @@ public final class SiftViewModel: ObservableObject {
                 )
             )
 
+        case .resetWorkspace:
+            removeThinkingItem(thinkingItem.id)
+            resetWorkspace()
+
         case .showSourceInfo:
             if let source = selectedSource {
                 let lines = [
@@ -655,6 +659,28 @@ public final class SiftViewModel: ObservableObject {
     public func clearConversation() {
         transcript = Self.initialTranscript
         lastExecution = nil
+        persistSnapshot()
+    }
+
+    public func resetWorkspace() {
+        let sourceCount = sources.count
+        let bookmarkCount = settings.bookmarks.count
+        sources.removeAll()
+        selectedSource = nil
+        settings.bookmarks.removeAll()
+        settings.queryTemplates.removeAll()
+        transcript = Self.initialTranscript
+        lastExecution = nil
+        searchQuery = ""
+        searchResults = []
+
+        appendTranscript(
+            TranscriptItem(
+                role: .system,
+                title: "Workspace Reset",
+                body: "Cleared \(sourceCount) source\(sourceCount == 1 ? "" : "s"), \(bookmarkCount) bookmark\(bookmarkCount == 1 ? "" : "s"), and the conversation."
+            )
+        )
         persistSnapshot()
     }
 

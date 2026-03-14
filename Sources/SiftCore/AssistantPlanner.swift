@@ -32,6 +32,7 @@ public enum AssistantAction: Equatable, Sendable {
     case showCommandCount
     case showSourceInfo
     case showPinnedItems
+    case resetWorkspace
 }
 
 public struct CommandInfo: Equatable, Sendable {
@@ -63,6 +64,7 @@ public enum CommandRegistry {
         CommandInfo(command: "/stats", description: "Show session statistics"),
         CommandInfo(command: "/info", description: "Show active source details"),
         CommandInfo(command: "/pins", description: "Show pinned items"),
+        CommandInfo(command: "/reset", description: "Reset workspace (clear sources, bookmarks, transcript)"),
     ]
 
     /// Returns commands matching a prefix (for tab completion)
@@ -172,6 +174,10 @@ public enum AssistantPlanner {
 
         if trimmed.caseInsensitiveCompare("/pins") == .orderedSame || trimmed.caseInsensitiveCompare("/pinned") == .orderedSame {
             return .showPinnedItems
+        }
+
+        if trimmed.caseInsensitiveCompare("/reset") == .orderedSame {
+            return .resetWorkspace
         }
 
         if trimmed.caseInsensitiveCompare("What can you do?") == .orderedSame || trimmed.caseInsensitiveCompare("/help") == .orderedSame {
@@ -645,6 +651,16 @@ public enum AssistantPlanner {
             )
         }
 
+        if let tableName = extractCountTarget(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT COUNT(*) AS row_count FROM \(tableName);",
+                    explanation: "Counting rows in \(tableName) from \(source.displayName)."
+                )
+            )
+        }
+
         if lowercased.contains("describe") || lowercased.contains("schema") {
             return .command(
                 DuckDBCommandPlan(
@@ -695,6 +711,30 @@ public enum AssistantPlanner {
             .first?
             .lowercased() ?? ""
         return keywords.contains(firstToken)
+    }
+
+    /// Extracts a table name from "count [table]" or "count rows in [table]"
+    static func extractCountTarget(from lowercased: String) -> String? {
+        let patterns = [
+            "count rows in (\\w+)",
+            "count (\\w+) rows",
+            "count (\\w+)",
+        ]
+        let reservedWords: Set<String> = [
+            "the", "this", "rows", "all", "my", "a", "them", "it", "everything",
+        ]
+
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)),
+               let nameRange = Range(match.range(at: 1), in: lowercased) {
+                let name = String(lowercased[nameRange])
+                if !reservedWords.contains(name), name.count > 1 {
+                    return name
+                }
+            }
+        }
+        return nil
     }
 
     /// Extracts a table name from "preview [table]" or "show [table]"

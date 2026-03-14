@@ -1631,6 +1631,49 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
     }
 
+    // MARK: - Reset workspace
+
+    func testResetClearsEverything() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.csv"))
+        XCTAssertEqual(viewModel.sources.count, 2)
+
+        viewModel.composerText = "/reset"
+        await viewModel.sendPrompt()
+
+        XCTAssertTrue(viewModel.sources.isEmpty)
+        XCTAssertNil(viewModel.selectedSource)
+        XCTAssertNil(viewModel.lastExecution)
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "Workspace Reset" }))
+    }
+
+    func testResetClearsBookmarks() async {
+        var settings = AppSettings(hasCompletedSetup: true)
+        settings.bookmarks = [BookmarkedCommand(sql: "SELECT 1;", sourceName: "test")]
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: settings, sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertEqual(viewModel.settings.bookmarks.count, 1)
+
+        viewModel.composerText = "/reset"
+        await viewModel.sendPrompt()
+
+        XCTAssertTrue(viewModel.settings.bookmarks.isEmpty)
+    }
+
     // MARK: - Pins command
 
     func testPinsCommandWithNoPinsShowsGuidance() async {

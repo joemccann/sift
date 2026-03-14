@@ -1774,4 +1774,85 @@ final class RandomSamplingTests: XCTestCase {
     }
 }
 
+// MARK: - /reset command
+
+final class ResetCommandTests: XCTestCase {
+    func testResetCommandReturnsResetWorkspace() {
+        let action = AssistantPlanner.plan(prompt: "/reset", source: nil)
+        XCTAssertEqual(action, .resetWorkspace)
+    }
+
+    func testResetIsCaseInsensitive() {
+        let action = AssistantPlanner.plan(prompt: "/RESET", source: nil)
+        XCTAssertEqual(action, .resetWorkspace)
+    }
+
+    func testResetInCommandRegistry() {
+        XCTAssertTrue(CommandRegistry.allCommands.contains(where: { $0.command == "/reset" }))
+    }
+}
+
+// MARK: - DuckDB count [tablename]
+
+final class DuckDBCountTableTests: XCTestCase {
+    func testCountTradesGeneratesCountQuery() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "count trades", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("COUNT(*)"))
+        XCTAssertTrue(plan.sql.contains("FROM trades"))
+    }
+
+    func testCountRowsInOrdersGeneratesCountQuery() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "count rows in orders", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("COUNT(*)"))
+        XCTAssertTrue(plan.sql.contains("FROM orders"))
+    }
+
+    func testExtractCountTargetReturnsTableName() {
+        XCTAssertEqual(AssistantPlanner.extractCountTarget(from: "count trades"), "trades")
+        XCTAssertEqual(AssistantPlanner.extractCountTarget(from: "count rows in users"), "users")
+    }
+
+    func testExtractCountTargetRejectsReservedWords() {
+        XCTAssertNil(AssistantPlanner.extractCountTarget(from: "count rows"))
+        XCTAssertNil(AssistantPlanner.extractCountTarget(from: "count the"))
+        XCTAssertNil(AssistantPlanner.extractCountTarget(from: "count all"))
+    }
+
+    func testExtractCountTargetRejectsShortNames() {
+        XCTAssertNil(AssistantPlanner.extractCountTarget(from: "count a"))
+    }
+}
+
+// MARK: - CommandRegistry count
+
+final class CommandRegistryCountTests: XCTestCase {
+    func testCommandRegistryHasExpectedCount() {
+        // All known commands
+        let expected = ["/sql", "/duckdb", "/help", "/clear", "/sources", "/copy", "/rerun",
+                        "/history", "/export", "/status", "/version", "/bookmark", "/bookmarks",
+                        "/undo", "/stats", "/info", "/pins", "/reset"]
+        for cmd in expected {
+            XCTAssertTrue(CommandRegistry.allCommands.contains(where: { $0.command == cmd }),
+                          "Missing \(cmd) in registry")
+        }
+    }
+
+    func testNoDuplicateCommandsInRegistry() {
+        let commands = CommandRegistry.allCommands.map(\.command)
+        let unique = Set(commands)
+        XCTAssertEqual(commands.count, unique.count, "Duplicate commands in registry")
+    }
+}
 
