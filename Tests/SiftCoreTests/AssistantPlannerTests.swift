@@ -865,6 +865,20 @@ final class MetalWorkspaceSnapshotTests: XCTestCase {
     }
 }
 
+// MARK: - /version command
+
+final class VersionCommandTests: XCTestCase {
+    func testVersionCommandReturnsShowVersion() {
+        let action = AssistantPlanner.plan(prompt: "/version", source: nil)
+        XCTAssertEqual(action, .showVersion)
+    }
+
+    func testVersionCommandIsCaseInsensitive() {
+        let action = AssistantPlanner.plan(prompt: "/VERSION", source: nil)
+        XCTAssertEqual(action, .showVersion)
+    }
+}
+
 // MARK: - DuckDB SQL passthrough patterns
 
 final class DuckDBSQLPassthroughTests: XCTestCase {

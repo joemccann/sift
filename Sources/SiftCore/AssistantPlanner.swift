@@ -25,6 +25,7 @@ public enum AssistantAction: Equatable, Sendable {
     case showHistory
     case exportTranscript
     case showStatus
+    case showVersion
 }
 
 public enum PromptLibrary {
@@ -96,6 +97,10 @@ public enum AssistantPlanner {
 
         if trimmed.caseInsensitiveCompare("/status") == .orderedSame {
             return .showStatus
+        }
+
+        if trimmed.caseInsensitiveCompare("/version") == .orderedSame {
+            return .showVersion
         }
 
         if trimmed.caseInsensitiveCompare("What can you do?") == .orderedSame || trimmed.caseInsensitiveCompare("/help") == .orderedSame {

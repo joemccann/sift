@@ -359,6 +359,17 @@ public final class SiftViewModel: ObservableObject {
             removeThinkingItem(thinkingItem.id)
             exportTranscriptToClipboard()
 
+        case .showVersion:
+            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "development"
+            let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
+            replaceThinkingItem(thinkingItem.id, with:
+                TranscriptItem(
+                    role: .assistant,
+                    title: "Version",
+                    body: "**Sift** v\(version) (build \(build))\n\nA chat-first native macOS shell for exploring parquet and DuckDB files."
+                )
+            )
+
         case .showStatus:
             let statusLines = [
                 "**Workspace Status**",

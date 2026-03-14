@@ -82,6 +82,24 @@ final class ProviderDiagnosticsTests: XCTestCase {
     }
 }
 
+final class ProviderSecretStoreErrorTests: XCTestCase {
+    func testKeychainFailureDescription() {
+        let error = ProviderSecretStoreError.keychainFailure(-25300)
+        XCTAssertTrue(error.errorDescription?.contains("-25300") == true)
+    }
+
+    func testKeychainFailureEquality() {
+        XCTAssertEqual(
+            ProviderSecretStoreError.keychainFailure(-25300),
+            ProviderSecretStoreError.keychainFailure(-25300)
+        )
+        XCTAssertNotEqual(
+            ProviderSecretStoreError.keychainFailure(-25300),
+            ProviderSecretStoreError.keychainFailure(-25299)
+        )
+    }
+}
+
 final class ProviderChatServiceTests: XCTestCase {
     func testClaudeJSONResponseIsParsed() async throws {
         let executor = CapturingProcessExecutor()

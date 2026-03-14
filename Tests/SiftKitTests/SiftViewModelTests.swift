@@ -960,6 +960,132 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.metalSnapshot.executionState, .success)
         XCTAssertGreaterThanOrEqual(viewModel.metalSnapshot.transcriptCount, 1)
     }
+
+    func testVersionCommandShowsVersionInfo() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/version"
+        await viewModel.sendPrompt()
+
+        let versionItems = viewModel.transcript.filter { $0.title == "Version" }
+        XCTAssertFalse(versionItems.isEmpty)
+        XCTAssertTrue(versionItems.last?.body.contains("Sift") == true)
+    }
+
+    func testSelectSourceSwitchesActiveSource() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.duckdb"))
+
+        let sourceA = viewModel.sources.first(where: { $0.displayName == "a.parquet" })!
+        viewModel.selectSource(sourceA)
+
+        XCTAssertEqual(viewModel.selectedSource, sourceA)
+        XCTAssertEqual(viewModel.selectedDestination, .assistant)
+    }
+
+    func testEmptyPromptIsIgnored() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let countBefore = viewModel.transcript.count
+        viewModel.composerText = "   "
+        await viewModel.sendPrompt()
+
+        XCTAssertEqual(viewModel.transcript.count, countBefore)
+    }
+
+    func testSendPromptClearsComposerText() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/help"
+        await viewModel.sendPrompt()
+
+        XCTAssertEqual(viewModel.composerText, "")
+    }
+
+    func testTriggerPromptSetsComposerTextAndSends() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        await viewModel.triggerPrompt("/help")
+
+        XCTAssertEqual(viewModel.composerText, "")
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.body.contains("Sift Commands") }))
+    }
+
+    func testRequestComposerFocusIncrementsID() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let before = viewModel.composerFocusRequestID
+        viewModel.requestComposerFocus()
+        XCTAssertEqual(viewModel.composerFocusRequestID, before + 1)
+    }
+
+    func testMetalSnapshotSourceCountReflectsImports() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertEqual(viewModel.metalSnapshot.sourceCount, 0)
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        XCTAssertEqual(viewModel.metalSnapshot.sourceCount, 1)
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.csv"))
+        XCTAssertEqual(viewModel.metalSnapshot.sourceCount, 2)
+    }
+
+    func testDiagnosticsDrawerStartsClosed() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertFalse(viewModel.isDiagnosticsDrawerPresented)
+    }
 }
 
 // MARK: - SidebarDestination
