@@ -426,6 +426,31 @@ final class AssistantPlannerTests: XCTestCase {
         XCTAssertEqual(queriedSource, source)
     }
 
+    // MARK: - /rerun command
+
+    func testRerunCommandReturnsRerunWithNilIndex() {
+        let action = AssistantPlanner.plan(prompt: "/rerun", source: nil)
+        XCTAssertEqual(action, .rerunCommand(index: nil))
+    }
+
+    func testRerunCommandWithIndexReturnsRerunWithIndex() {
+        let action = AssistantPlanner.plan(prompt: "/rerun 3", source: nil)
+        XCTAssertEqual(action, .rerunCommand(index: 3))
+    }
+
+    func testRerunCommandIsCaseInsensitive() {
+        let action = AssistantPlanner.plan(prompt: "/RERUN", source: nil)
+        XCTAssertEqual(action, .rerunCommand(index: nil))
+    }
+
+    func testHelpIncludesRerun() {
+        let action = AssistantPlanner.plan(prompt: "/help", source: nil)
+        guard case let .assistantReply(reply) = action else {
+            return XCTFail("Expected assistant reply")
+        }
+        XCTAssertTrue(reply.contains("/rerun"))
+    }
+
     // MARK: - Unsupported file types
 
     func testXLSXFileReturnsNil() {

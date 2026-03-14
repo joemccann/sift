@@ -42,6 +42,30 @@ final class DuckDBAdapterTests: XCTestCase {
         XCTAssertEqual(arguments, ["/tmp/market data.duckdb", "-readonly", "-c", "SHOW TABLES;"])
     }
 
+    func testRequestForCSVUsesMemoryDatabase() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/trades.csv"), kind: .csv)
+        let plan = DuckDBCommandPlan(source: source, sql: "SELECT * FROM read_csv('/tmp/trades.csv') LIMIT 25;", explanation: "Preview")
+
+        let request = DuckDBCLIExecutor.request(for: plan, binaryPath: "/opt/homebrew/bin/duckdb")
+
+        XCTAssertEqual(
+            request.arguments,
+            [":memory:", "-table", "-c", "SELECT * FROM read_csv('/tmp/trades.csv') LIMIT 25;"]
+        )
+    }
+
+    func testRequestForJSONUsesMemoryDatabase() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let plan = DuckDBCommandPlan(source: source, sql: "SELECT * FROM read_json('/tmp/data.json') LIMIT 25;", explanation: "Preview")
+
+        let request = DuckDBCLIExecutor.request(for: plan, binaryPath: "/opt/homebrew/bin/duckdb")
+
+        XCTAssertEqual(
+            request.arguments,
+            [":memory:", "-table", "-c", "SELECT * FROM read_json('/tmp/data.json') LIMIT 25;"]
+        )
+    }
+
     func testRequestForRawArgumentsUsesExactArguments() {
         let request = DuckDBCLIExecutor.request(
             forRawArguments: ["--help"],

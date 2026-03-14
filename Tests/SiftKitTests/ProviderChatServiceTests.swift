@@ -156,6 +156,40 @@ final class ProviderChatServiceTests: XCTestCase {
         XCTAssertTrue(sql.isEmpty || explanation.contains("SHOW TABLES"))
     }
 
+    func testExtractSQLFromMultilineCodeBlock() {
+        let text = """
+        ```sql
+        SELECT
+            symbol,
+            AVG(price) AS avg_price
+        FROM trades
+        GROUP BY symbol
+        ORDER BY avg_price DESC;
+        ```
+        """
+
+        let (sql, _) = ProviderChatService.extractSQL(from: text)
+        XCTAssertTrue(sql.contains("SELECT"))
+        XCTAssertTrue(sql.contains("GROUP BY"))
+        XCTAssertTrue(sql.contains("ORDER BY"))
+    }
+
+    func testExtractSQLPreservesExplanation() {
+        let text = """
+        I'll generate a query to count rows by category.
+
+        ```sql
+        SELECT category, COUNT(*) FROM products GROUP BY category;
+        ```
+
+        This gives you a breakdown by category.
+        """
+
+        let (sql, explanation) = ProviderChatService.extractSQL(from: text)
+        XCTAssertEqual(sql, "SELECT category, COUNT(*) FROM products GROUP BY category;")
+        XCTAssertTrue(explanation.contains("count rows by category") || explanation.contains("breakdown"))
+    }
+
     func testCodexReadsLastMessageFile() async throws {
         let executor = CapturingProcessExecutor()
         executor.handler = { _, arguments, _ in

@@ -352,6 +352,10 @@ public final class SiftViewModel: ObservableObject {
         case .copyLastResult:
             removeThinkingItem(thinkingItem.id)
             copyLastResultToClipboard()
+
+        case let .rerunCommand(index):
+            removeThinkingItem(thinkingItem.id)
+            await rerunCommand(at: index)
         }
     }
 
@@ -462,6 +466,103 @@ public final class SiftViewModel: ObservableObject {
         searchResults = transcript.filter { item in
             item.body.localizedCaseInsensitiveContains(trimmed) ||
             item.title.localizedCaseInsensitiveContains(trimmed)
+        }
+    }
+
+    public func rerunCommand(at index: Int?) async {
+        // Find commands in reverse order from the transcript
+        let commandItems = transcript.compactMap { item -> (sql: String, source: DataSource)? in
+            switch item.kind {
+            case let .commandPreview(sql, _):
+                // Find the source this was run against
+                if let selectedSource {
+                    return (sql, selectedSource)
+                }
+                return nil
+            default:
+                return nil
+            }
+        }
+
+        guard !commandItems.isEmpty else {
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "No Commands",
+                    body: "No previous commands found to re-run. Execute a query first."
+                )
+            )
+            return
+        }
+
+        let reversedCommands = commandItems.reversed().map { $0 }
+        let targetIndex = (index ?? 1) - 1
+
+        guard targetIndex >= 0, targetIndex < reversedCommands.count else {
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Invalid Index",
+                    body: "Command #\(targetIndex + 1) not found. There are \(reversedCommands.count) previous command(s)."
+                )
+            )
+            return
+        }
+
+        let target = reversedCommands[targetIndex]
+        let plan = DuckDBCommandPlan(
+            source: target.source,
+            sql: target.sql,
+            explanation: "Re-running previous command."
+        )
+
+        appendTranscript(
+            TranscriptItem(
+                role: .assistant,
+                title: "Re-run",
+                body: "Re-executing: `\(target.sql)`",
+                kind: .commandPreview(sql: target.sql, sourceName: target.source.displayName)
+            )
+        )
+
+        guard let executor else {
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "DuckDB Unavailable",
+                    body: "The app could not locate the `duckdb` binary."
+                )
+            )
+            return
+        }
+
+        isRunning = true
+        isDiagnosticsDrawerPresented = true
+        defer { isRunning = false }
+
+        do {
+            let result = try await executor.execute(plan: plan)
+            lastExecution = result
+            appendTranscript(
+                TranscriptItem(
+                    role: .assistant,
+                    title: result.exitCode == 0 ? "Re-run Result" : "Re-run Error",
+                    body: result.exitCode == 0 ? "DuckDB finished re-running the command." : "DuckDB returned a non-zero exit code.",
+                    kind: .commandResult(
+                        exitCode: result.exitCode,
+                        stdout: result.stdout,
+                        stderr: result.stderr
+                    )
+                )
+            )
+        } catch {
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Execution Failed",
+                    body: error.localizedDescription
+                )
+            )
         }
     }
 

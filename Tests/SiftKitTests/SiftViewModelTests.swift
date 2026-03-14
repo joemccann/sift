@@ -496,6 +496,51 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(lastItem?.body.contains("clipboard") == true)
     }
 
+    func testRerunWithNoCommandsShowsGuidance() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/rerun"
+        await viewModel.sendPrompt()
+
+        let lastItem = viewModel.transcript.last
+        XCTAssertEqual(lastItem?.title, "No Commands")
+    }
+
+    func testRerunReExecutesLastCommand() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "SELECT 42;"],
+            sql: "SELECT 42;",
+            stdout: "42\n",
+            stderr: "",
+            exitCode: 0,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+        await viewModel.triggerPrompt("Preview this parquet file")
+
+        viewModel.composerText = "/rerun"
+        await viewModel.sendPrompt()
+
+        let rerunResults = viewModel.transcript.filter { $0.title == "Re-run Result" }
+        XCTAssertFalse(rerunResults.isEmpty)
+    }
+
     func testImportSourceSelectsJSON() {
         let viewModel = SiftViewModel(
             executor: nil,

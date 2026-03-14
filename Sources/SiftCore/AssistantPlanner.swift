@@ -21,6 +21,7 @@ public enum AssistantAction: Equatable, Sendable {
     case clearConversation
     case listSources
     case copyLastResult
+    case rerunCommand(index: Int?)
 }
 
 public enum PromptLibrary {
@@ -91,6 +92,7 @@ public enum AssistantPlanner {
                 • `/sql <query>` — Run raw SQL against the active source
                 • `/duckdb <args>` — Run raw DuckDB CLI arguments
                 • `/copy` — Copy the last query result to the clipboard
+                • `/rerun` — Re-execute the last command (or `/rerun 2` for the 2nd-to-last)
                 • `/clear` — Clear the conversation transcript
                 • `/sources` — List all attached data sources
                 • `/help` — Show this help message
@@ -110,6 +112,10 @@ public enum AssistantPlanner {
 
         if trimmed.caseInsensitiveCompare("/copy") == .orderedSame {
             return .copyLastResult
+        }
+
+        if let rerunAction = parseRerun(from: trimmed) {
+            return rerunAction
         }
 
         if trimmed.caseInsensitiveCompare("/duckdb") == .orderedSame {
@@ -459,6 +465,20 @@ public enum AssistantPlanner {
             .first?
             .lowercased() ?? ""
         return keywords.contains(firstToken)
+    }
+
+    private static func parseRerun(from trimmed: String) -> AssistantAction? {
+        let lowered = trimmed.lowercased()
+        guard lowered.hasPrefix("/rerun") else { return nil }
+
+        let rest = trimmed.dropFirst("/rerun".count).trimmingCharacters(in: .whitespacesAndNewlines)
+        if rest.isEmpty {
+            return .rerunCommand(index: nil)
+        }
+        if let n = Int(rest), n > 0 {
+            return .rerunCommand(index: n)
+        }
+        return nil
     }
 
     /// Extracts a numeric limit from patterns like "top 10", "first 5 rows", "show 100 rows"
