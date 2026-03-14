@@ -185,4 +185,83 @@ final class AppSessionStoreTests: XCTestCase {
 
         try? FileManager.default.removeItem(at: rootURL)
     }
+
+    func testSaveAndLoadWithSourceFavoritesAndNotes() throws {
+        let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let fileURL = rootURL.appendingPathComponent("session.json")
+        let store = AppSessionStore(fileURL: fileURL)
+
+        let source = DataSource(
+            url: URL(fileURLWithPath: "/tmp/data.parquet"),
+            kind: .parquet,
+            alias: "Prices",
+            isFavorite: true,
+            notes: "Daily data"
+        )
+
+        let snapshot = AppSessionSnapshot(
+            settings: AppSettings(hasCompletedSetup: true),
+            sources: [source],
+            selectedSourceID: source.id,
+            transcript: []
+        )
+
+        try store.saveSnapshot(snapshot)
+        let restored = store.loadSnapshot()
+
+        XCTAssertEqual(restored?.sources.first?.alias, "Prices")
+        XCTAssertTrue(restored?.sources.first?.isFavorite == true)
+        XCTAssertEqual(restored?.sources.first?.notes, "Daily data")
+
+        try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    func testSaveAndLoadWithTaggedItems() throws {
+        let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let fileURL = rootURL.appendingPathComponent("session.json")
+        let store = AppSessionStore(fileURL: fileURL)
+
+        let snapshot = AppSessionSnapshot(
+            settings: AppSettings(hasCompletedSetup: true),
+            sources: [],
+            selectedSourceID: nil,
+            transcript: [
+                TranscriptItem(role: .assistant, title: "Result", body: "Data", isPinned: true, tags: ["sql", "important"]),
+            ]
+        )
+
+        try store.saveSnapshot(snapshot)
+        let restored = store.loadSnapshot()
+
+        XCTAssertEqual(restored?.transcript.first?.tags, ["sql", "important"])
+        XCTAssertTrue(restored?.transcript.first?.isPinned == true)
+
+        try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    func testSaveAndLoadWithAppearanceAndTemplates() throws {
+        let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let fileURL = rootURL.appendingPathComponent("session.json")
+        let store = AppSessionStore(fileURL: fileURL)
+
+        var settings = AppSettings(hasCompletedSetup: true, preferredAppearance: .dark)
+        settings.queryTemplates = [QueryTemplate(name: "Count", sql: "SELECT COUNT(*);")]
+        settings.bookmarks = [BookmarkedCommand(sql: "SHOW TABLES;", sourceName: "db")]
+
+        let snapshot = AppSessionSnapshot(
+            settings: settings,
+            sources: [],
+            selectedSourceID: nil,
+            transcript: []
+        )
+
+        try store.saveSnapshot(snapshot)
+        let restored = store.loadSnapshot()
+
+        XCTAssertEqual(restored?.settings.preferredAppearance, .dark)
+        XCTAssertEqual(restored?.settings.queryTemplates.count, 1)
+        XCTAssertEqual(restored?.settings.bookmarks.count, 1)
+
+        try? FileManager.default.removeItem(at: rootURL)
+    }
 }
