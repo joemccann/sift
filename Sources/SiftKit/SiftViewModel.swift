@@ -302,6 +302,31 @@ public final class SiftViewModel: ObservableObject {
         TranscriptAnalytics.wordCount(in: transcript)
     }
 
+    /// Sources that are tabular files (not databases)
+    public var tabularSources: [DataSource] {
+        sources.filter(\.isTabularFile)
+    }
+
+    /// Sources that are databases
+    public var databaseSources: [DataSource] {
+        sources.filter { $0.kind == .duckdb }
+    }
+
+    /// Whether the composer text starts with a slash command prefix
+    public var isComposerCommand: Bool {
+        composerText.trimmingCharacters(in: .whitespaces).hasPrefix("/")
+    }
+
+    /// Number of pinned items in the transcript
+    public var pinnedItemCount: Int {
+        pinnedItems.count
+    }
+
+    /// Total tags used across all transcript items
+    public var totalTagCount: Int {
+        transcript.reduce(0) { $0 + $1.tags.count }
+    }
+
     public var transcriptCharacterCount: Int {
         TranscriptAnalytics.characterCount(in: transcript)
     }

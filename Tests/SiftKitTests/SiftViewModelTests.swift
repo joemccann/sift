@@ -1814,6 +1814,87 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sources.first?.displayName, "data.parquet")
     }
 
+    // MARK: - Tabular vs database sources
+
+    func testTabularAndDatabaseSources() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.csv"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/c.duckdb"))
+
+        XCTAssertEqual(viewModel.tabularSources.count, 2)
+        XCTAssertEqual(viewModel.databaseSources.count, 1)
+    }
+
+    // MARK: - Composer command detection
+
+    func testIsComposerCommandForSlashPrefix() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/help"
+        XCTAssertTrue(viewModel.isComposerCommand)
+
+        viewModel.composerText = "Show me data"
+        XCTAssertFalse(viewModel.isComposerCommand)
+
+        viewModel.composerText = ""
+        XCTAssertFalse(viewModel.isComposerCommand)
+    }
+
+    // MARK: - Pinned and tag counts
+
+    func testPinnedItemCountAndTotalTagCount() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello", isPinned: true, tags: ["a", "b"]),
+                TranscriptItem(role: .user, title: "You", body: "Q", tags: ["c"]),
+                TranscriptItem(role: .assistant, title: "A", body: "R"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertEqual(viewModel.pinnedItemCount, 1)
+        XCTAssertEqual(viewModel.totalTagCount, 3) // a, b, c
+    }
+
+    // MARK: - Multiple execution stats
+
+    func testAverageExecutionTime() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let start = Date()
+        let r1 = DuckDBExecutionResult(binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT 1;", stdout: "1", stderr: "", exitCode: 0, startedAt: start, endedAt: start.addingTimeInterval(0.1))
+        let r2 = DuckDBExecutionResult(binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT 2;", stdout: "2", stderr: "", exitCode: 0, startedAt: start, endedAt: start.addingTimeInterval(0.3))
+
+        viewModel.recordExecution(r1)
+        viewModel.recordExecution(r2)
+
+        // Average of 100ms and 300ms = 200ms
+        XCTAssertEqual(viewModel.averageExecutionTimeMs, 200, accuracy: 10)
+    }
+
     // MARK: - Fastest execution
 
     func testFastestExecutionTracked() {
