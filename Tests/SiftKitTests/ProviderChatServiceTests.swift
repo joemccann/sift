@@ -26,6 +26,62 @@ private final class CapturingProcessExecutor: ProcessExecuting, @unchecked Senda
     }
 }
 
+final class ProviderDiagnosticsTests: XCTestCase {
+    func testDetectsEnvironmentAPIKey() {
+        let statuses = ProviderDiagnostics.detect(
+            environment: ["ANTHROPIC_API_KEY": "sk-test", "PATH": ""],
+            secretStore: MemorySecretStore(),
+            executableExists: { _ in false }
+        )
+
+        let claude = statuses.first(where: { $0.provider == .claude })!
+        XCTAssertFalse(claude.cliInstalled)
+        XCTAssertTrue(claude.environmentKeyPresent)
+    }
+
+    func testDetectsAllProviders() {
+        let statuses = ProviderDiagnostics.detect(
+            environment: ["PATH": ""],
+            secretStore: MemorySecretStore(),
+            executableExists: { _ in false }
+        )
+        XCTAssertEqual(statuses.count, ProviderKind.allCases.count)
+    }
+
+    func testStatusSummaryReflectsState() {
+        let ready = ProviderStatus(provider: .claude, cliInstalled: true, cliPath: "/bin/claude", apiKeyPresent: false, environmentKeyPresent: false)
+        XCTAssertEqual(ready.statusSummary, "CLI ready")
+
+        let apiKey = ProviderStatus(provider: .openAI, cliInstalled: false, cliPath: nil, apiKeyPresent: true, environmentKeyPresent: false)
+        XCTAssertEqual(apiKey.statusSummary, "API key available")
+
+        let envKey = ProviderStatus(provider: .gemini, cliInstalled: false, cliPath: nil, apiKeyPresent: false, environmentKeyPresent: true)
+        XCTAssertEqual(envKey.statusSummary, "API key available")
+
+        let unconfigured = ProviderStatus(provider: .claude, cliInstalled: false, cliPath: nil, apiKeyPresent: false, environmentKeyPresent: false)
+        XCTAssertEqual(unconfigured.statusSummary, "Needs configuration")
+    }
+
+    func testDetectsGeminiWithMultipleKeyNames() {
+        let statuses = ProviderDiagnostics.detect(
+            environment: ["GOOGLE_API_KEY": "test-key", "PATH": ""],
+            secretStore: MemorySecretStore(),
+            executableExists: { _ in false }
+        )
+
+        let gemini = statuses.first(where: { $0.provider == .gemini })!
+        XCTAssertTrue(gemini.environmentKeyPresent)
+    }
+
+    func testProviderStatusProperties() {
+        let status = ProviderStatus(provider: .claude, cliInstalled: true, cliPath: "/bin/claude", apiKeyPresent: false, environmentKeyPresent: false)
+        XCTAssertEqual(status.id, "claude")
+        XCTAssertEqual(status.name, "Claude")
+        XCTAssertEqual(status.cliName, "claude")
+        XCTAssertEqual(status.apiKeyName, "ANTHROPIC_API_KEY")
+    }
+}
+
 final class ProviderChatServiceTests: XCTestCase {
     func testClaudeJSONResponseIsParsed() async throws {
         let executor = CapturingProcessExecutor()

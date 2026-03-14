@@ -587,3 +587,158 @@ final class AssistantPlannerTests: XCTestCase {
         XCTAssertEqual(source?.kind, .json)
     }
 }
+
+// MARK: - TranscriptModels Codable
+
+final class TranscriptModelsCodableTests: XCTestCase {
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    func testTextKindRoundTrips() throws {
+        let item = TranscriptItem(role: .assistant, title: "A", body: "Hello", kind: .text)
+        let data = try encoder.encode(item)
+        let restored = try decoder.decode(TranscriptItem.self, from: data)
+        XCTAssertEqual(restored.kind, .text)
+        XCTAssertEqual(restored.body, "Hello")
+        XCTAssertEqual(restored.role, .assistant)
+    }
+
+    func testThinkingKindRoundTrips() throws {
+        let item = TranscriptItem(role: .assistant, title: "A", body: "Thinking…", kind: .thinking)
+        let data = try encoder.encode(item)
+        let restored = try decoder.decode(TranscriptItem.self, from: data)
+        XCTAssertEqual(restored.kind, .thinking)
+    }
+
+    func testCommandPreviewKindRoundTrips() throws {
+        let item = TranscriptItem(
+            role: .assistant, title: "Preview", body: "Running query",
+            kind: .commandPreview(sql: "SELECT 1;", sourceName: "test.duckdb")
+        )
+        let data = try encoder.encode(item)
+        let restored = try decoder.decode(TranscriptItem.self, from: data)
+        XCTAssertEqual(restored.kind, .commandPreview(sql: "SELECT 1;", sourceName: "test.duckdb"))
+    }
+
+    func testRawCommandPreviewKindRoundTrips() throws {
+        let item = TranscriptItem(
+            role: .assistant, title: "DuckDB", body: "Running",
+            kind: .rawCommandPreview(command: "--help")
+        )
+        let data = try encoder.encode(item)
+        let restored = try decoder.decode(TranscriptItem.self, from: data)
+        XCTAssertEqual(restored.kind, .rawCommandPreview(command: "--help"))
+    }
+
+    func testCommandResultKindRoundTrips() throws {
+        let item = TranscriptItem(
+            role: .assistant, title: "Result", body: "Done",
+            kind: .commandResult(exitCode: 0, stdout: "42\n", stderr: "")
+        )
+        let data = try encoder.encode(item)
+        let restored = try decoder.decode(TranscriptItem.self, from: data)
+        XCTAssertEqual(restored.kind, .commandResult(exitCode: 0, stdout: "42\n", stderr: ""))
+    }
+
+    func testTranscriptItemPreservesID() throws {
+        let item = TranscriptItem(role: .user, title: "You", body: "test")
+        let data = try encoder.encode(item)
+        let restored = try decoder.decode(TranscriptItem.self, from: data)
+        XCTAssertEqual(restored.id, item.id)
+    }
+
+    func testTranscriptItemPreservesTimestamp() throws {
+        let item = TranscriptItem(role: .system, title: "Sys", body: "info")
+        let data = try encoder.encode(item)
+        let restored = try decoder.decode(TranscriptItem.self, from: data)
+        XCTAssertEqual(restored.timestamp.timeIntervalSince1970, item.timestamp.timeIntervalSince1970, accuracy: 0.001)
+    }
+}
+
+// MARK: - AppSettings
+
+final class AppSettingsTests: XCTestCase {
+    func testDefaultSettingsHaveCorrectDefaults() {
+        let settings = AppSettings()
+        XCTAssertFalse(settings.hasCompletedSetup)
+        XCTAssertEqual(settings.defaultProvider, .claude)
+        XCTAssertTrue(settings.providerPreferences.isEmpty)
+    }
+
+    func testPreferenceReturnsDefaultWhenNotSet() {
+        let settings = AppSettings()
+        let pref = settings.preference(for: .claude)
+        XCTAssertEqual(pref.authMode, .localCLI)
+        XCTAssertEqual(pref.customModel, "sonnet")
+    }
+
+    func testSetPreferenceRoundTrips() {
+        var settings = AppSettings()
+        let pref = ProviderPreference(authMode: .apiKey, customModel: "opus")
+        settings.setPreference(pref, for: .claude)
+        XCTAssertEqual(settings.preference(for: .claude), pref)
+    }
+
+    func testProviderKindDisplayNames() {
+        XCTAssertEqual(ProviderKind.claude.displayName, "Claude")
+        XCTAssertEqual(ProviderKind.openAI.displayName, "OpenAI")
+        XCTAssertEqual(ProviderKind.gemini.displayName, "Gemini")
+    }
+
+    func testProviderKindCLICommands() {
+        XCTAssertEqual(ProviderKind.claude.cliCommand, "claude")
+        XCTAssertEqual(ProviderKind.openAI.cliCommand, "codex")
+        XCTAssertEqual(ProviderKind.gemini.cliCommand, "gemini")
+    }
+
+    func testProviderKindAPIKeyNames() {
+        XCTAssertEqual(ProviderKind.claude.preferredAPIKeyEnvironmentName, "ANTHROPIC_API_KEY")
+        XCTAssertEqual(ProviderKind.openAI.preferredAPIKeyEnvironmentName, "OPENAI_API_KEY")
+        XCTAssertEqual(ProviderKind.gemini.preferredAPIKeyEnvironmentName, "GEMINI_API_KEY")
+    }
+
+    func testProviderAuthModeDisplayNames() {
+        XCTAssertEqual(ProviderAuthMode.localCLI.displayName, "Local Subscription")
+        XCTAssertEqual(ProviderAuthMode.apiKey.displayName, "API Key")
+    }
+
+    func testAppSettingsCodableRoundTrip() throws {
+        var settings = AppSettings(hasCompletedSetup: true, defaultProvider: .gemini)
+        settings.setPreference(ProviderPreference(authMode: .apiKey, customModel: "flash"), for: .gemini)
+
+        let data = try JSONEncoder().encode(settings)
+        let restored = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(restored, settings)
+    }
+
+    func testSessionSnapshotCodableRoundTrip() throws {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/test.parquet"), kind: .parquet)
+        let snapshot = AppSessionSnapshot(
+            settings: AppSettings(hasCompletedSetup: true),
+            sources: [source],
+            selectedSourceID: source.id,
+            transcript: [TranscriptItem(role: .assistant, title: "A", body: "Hi")]
+        )
+
+        let data = try JSONEncoder().encode(snapshot)
+        let restored = try JSONDecoder().decode(AppSessionSnapshot.self, from: data)
+        XCTAssertEqual(restored.settings, snapshot.settings)
+        XCTAssertEqual(restored.sources.count, 1)
+        XCTAssertEqual(restored.selectedSourceID, source.id)
+    }
+
+    func testDataSourceKindAllCases() {
+        let allCases = DataSourceKind.allCases
+        XCTAssertTrue(allCases.contains(.parquet))
+        XCTAssertTrue(allCases.contains(.duckdb))
+        XCTAssertTrue(allCases.contains(.csv))
+        XCTAssertTrue(allCases.contains(.json))
+        XCTAssertEqual(allCases.count, 4)
+    }
+
+    func testDataSourceDisplayNameIsFilename() {
+        let source = DataSource(url: URL(fileURLWithPath: "/some/deep/path/data.parquet"), kind: .parquet)
+        XCTAssertEqual(source.displayName, "data.parquet")
+        XCTAssertEqual(source.path, "/some/deep/path/data.parquet")
+    }
+}
