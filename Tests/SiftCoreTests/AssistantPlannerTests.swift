@@ -3532,3 +3532,81 @@ final class DuckDBErrorRecoveryCompletenessTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB aggregate pattern completeness
+
+final class DuckDBAggregateCompletenessTests: XCTestCase {
+    func testAllAggregatesExtract() {
+        let fns = [("avg", "AVG"), ("sum", "SUM"), ("min", "MIN"), ("max", "MAX"),
+                   ("average", "AVG"), ("total", "SUM"), ("minimum", "MIN"), ("maximum", "MAX")]
+        for (input, expected) in fns {
+            let result = AssistantPlanner.extractAggregatePattern(from: "\(input) price from trades")
+            XCTAssertEqual(result?.function, expected, "\(input) should map to \(expected)")
+        }
+    }
+}
+
+// MARK: - DuckDB order-by pattern completeness
+
+final class DuckDBOrderByCompletenessTests: XCTestCase {
+    func testSortVariations() {
+        // "sort trades by price"
+        let r1 = AssistantPlanner.extractOrderByPattern(from: "sort trades by price")
+        XCTAssertEqual(r1?.table, "trades")
+        XCTAssertEqual(r1?.column, "price")
+
+        // "order by date in events"
+        let r2 = AssistantPlanner.extractOrderByPattern(from: "order by date in events")
+        XCTAssertEqual(r2?.table, "events")
+        XCTAssertEqual(r2?.column, "date")
+
+        // "order name from users"
+        let r3 = AssistantPlanner.extractOrderByPattern(from: "order name from users")
+        XCTAssertEqual(r3?.table, "users")
+        XCTAssertEqual(r3?.column, "name")
+    }
+}
+
+// MARK: - Planner with all file source types
+
+final class PlannerAllSourceTypesTests: XCTestCase {
+    func testPreviewForAllFileTypes() {
+        let kinds: [(DataSourceKind, String)] = [
+            (.parquet, "read_parquet"), (.csv, "read_csv"), (.json, "read_json")
+        ]
+        for (kind, readFn) in kinds {
+            let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.\(kind.rawValue)"), kind: kind)
+            let action = AssistantPlanner.plan(prompt: "Preview rows", source: source)
+            guard case let .command(plan) = action else {
+                XCTFail("Expected command for \(kind)")
+                continue
+            }
+            XCTAssertTrue(plan.sql.contains(readFn), "\(kind) should use \(readFn)")
+            XCTAssertTrue(plan.sql.contains("LIMIT 25"))
+        }
+    }
+
+    func testCountForAllFileTypes() {
+        for kind in [DataSourceKind.parquet, .csv, .json] {
+            let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.\(kind.rawValue)"), kind: kind)
+            let action = AssistantPlanner.plan(prompt: "Count rows", source: source)
+            guard case let .command(plan) = action else {
+                XCTFail("Expected command for \(kind)")
+                continue
+            }
+            XCTAssertTrue(plan.sql.contains("COUNT(*)"))
+        }
+    }
+
+    func testSummarizeForAllFileTypes() {
+        for kind in [DataSourceKind.parquet, .csv, .json] {
+            let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.\(kind.rawValue)"), kind: kind)
+            let action = AssistantPlanner.plan(prompt: "Summarize this", source: source)
+            guard case let .command(plan) = action else {
+                XCTFail("Expected command for \(kind)")
+                continue
+            }
+            XCTAssertTrue(plan.sql.contains("SUMMARIZE"))
+        }
+    }
+}
+
