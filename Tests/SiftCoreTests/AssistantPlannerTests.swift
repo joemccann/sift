@@ -2625,3 +2625,125 @@ final class PlannerPatternCoverageTests: XCTestCase {
     }
 }
 
+// MARK: - Remote URL sources
+
+final class RemoteURLSourceTests: XCTestCase {
+    func testFromRemoteURLCreatesParquetSource() {
+        let source = DataSource.fromRemoteURL("https://example.com/data.parquet")
+        XCTAssertNotNil(source)
+        XCTAssertEqual(source?.kind, .parquet)
+        XCTAssertTrue(source?.isRemote == true)
+    }
+
+    func testFromRemoteURLCreatesCSVSource() {
+        let source = DataSource.fromRemoteURL("http://example.com/data.csv")
+        XCTAssertNotNil(source)
+        XCTAssertEqual(source?.kind, .csv)
+    }
+
+    func testFromRemoteURLRejectsUnsupported() {
+        XCTAssertNil(DataSource.fromRemoteURL("https://example.com/data.xlsx"))
+    }
+
+    func testFromRemoteURLRejectsInvalidURL() {
+        XCTAssertNil(DataSource.fromRemoteURL("not a url"))
+    }
+
+    func testFromRemoteURLRejectsFTP() {
+        XCTAssertNil(DataSource.fromRemoteURL("ftp://example.com/data.parquet"))
+    }
+
+    func testLocalSourceIsNotRemote() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        XCTAssertFalse(source.isRemote)
+    }
+
+    func testSupportedExtensionsContainsAll() {
+        let exts = DataSource.supportedExtensions
+        XCTAssertTrue(exts.contains("parquet"))
+        XCTAssertTrue(exts.contains("csv"))
+        XCTAssertTrue(exts.contains("tsv"))
+        XCTAssertTrue(exts.contains("json"))
+        XCTAssertTrue(exts.contains("jsonl"))
+        XCTAssertTrue(exts.contains("ndjson"))
+        XCTAssertTrue(exts.contains("duckdb"))
+        XCTAssertTrue(exts.contains("db"))
+    }
+}
+
+// MARK: - DuckDB Output Parser
+
+final class DuckDBOutputParserTests: XCTestCase {
+    func testExtractRowCountFromRowsPattern() {
+        XCTAssertEqual(DuckDBOutputParser.extractRowCount(from: "42 rows"), 42)
+        XCTAssertEqual(DuckDBOutputParser.extractRowCount(from: "1 row"), 1)
+    }
+
+    func testExtractRowCountFromRowCountColumn() {
+        let output = "row_count\n100\n"
+        XCTAssertEqual(DuckDBOutputParser.extractRowCount(from: output), 100)
+    }
+
+    func testExtractRowCountReturnsNilForNoMatch() {
+        XCTAssertNil(DuckDBOutputParser.extractRowCount(from: "hello world"))
+    }
+
+    func testCountDataRows() {
+        let output = """
+        name | age
+        ─────┼────
+        Alice | 30
+        Bob | 25
+        """
+        XCTAssertEqual(DuckDBOutputParser.countDataRows(in: output), 3) // header + 2 data
+    }
+
+    func testCountDataRowsEmptyOutput() {
+        XCTAssertEqual(DuckDBOutputParser.countDataRows(in: ""), 0)
+    }
+
+    func testContainsError() {
+        XCTAssertTrue(DuckDBOutputParser.containsError(in: "Error: table not found"))
+        XCTAssertTrue(DuckDBOutputParser.containsError(in: "Parse Error: syntax error"))
+        XCTAssertTrue(DuckDBOutputParser.containsError(in: "Catalog Error: missing"))
+        XCTAssertTrue(DuckDBOutputParser.containsError(in: "Binder Error: column"))
+        XCTAssertFalse(DuckDBOutputParser.containsError(in: "42\nDone"))
+    }
+}
+
+// MARK: - DuckDB join pattern
+
+final class DuckDBJoinPatternTests: XCTestCase {
+    func testJoinTwoTablesOnColumn() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "join orders and customers on customer_id", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("JOIN"))
+        XCTAssertTrue(plan.sql.contains("orders"))
+        XCTAssertTrue(plan.sql.contains("customers"))
+        XCTAssertTrue(plan.sql.contains("customer_id"))
+    }
+
+    func testExtractJoinPatternAndOn() {
+        let result = AssistantPlanner.extractJoinPattern(from: "join trades and positions on symbol")
+        XCTAssertEqual(result?.table1, "trades")
+        XCTAssertEqual(result?.table2, "positions")
+        XCTAssertEqual(result?.column, "symbol")
+    }
+
+    func testExtractJoinPatternWithUsing() {
+        let result = AssistantPlanner.extractJoinPattern(from: "join trades and prices using date")
+        XCTAssertEqual(result?.table1, "trades")
+        XCTAssertEqual(result?.table2, "prices")
+        XCTAssertEqual(result?.column, "date")
+    }
+
+    func testExtractJoinPatternNoMatch() {
+        XCTAssertNil(AssistantPlanner.extractJoinPattern(from: "show me data"))
+    }
+}
+

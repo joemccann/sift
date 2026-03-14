@@ -1814,6 +1814,50 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sources.first?.displayName, "data.parquet")
     }
 
+    // MARK: - Contextual suggestions
+
+    func testContextualSuggestionsWithNoSources() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let suggestions = viewModel.contextualSuggestions
+        XCTAssertTrue(suggestions.contains(where: { $0.contains("Open") }))
+    }
+
+    func testContextualSuggestionsWithParquetSource() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+
+        let suggestions = viewModel.contextualSuggestions
+        XCTAssertTrue(suggestions.contains("Preview rows"))
+        XCTAssertTrue(suggestions.contains("Show schema"))
+    }
+
+    func testContextualSuggestionsWithDuckDBSource() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"))
+
+        let suggestions = viewModel.contextualSuggestions
+        XCTAssertTrue(suggestions.contains("Show tables"))
+    }
+
     // MARK: - Tabular vs database sources
 
     func testTabularAndDatabaseSources() {

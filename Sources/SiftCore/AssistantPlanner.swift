@@ -697,6 +697,16 @@ public enum AssistantPlanner {
             )
         }
 
+        if let joinInfo = extractJoinPattern(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM \(joinInfo.table1) JOIN \(joinInfo.table2) USING (\(joinInfo.column)) LIMIT 25;",
+                    explanation: "Joining \(joinInfo.table1) and \(joinInfo.table2) on \(joinInfo.column) in \(source.displayName)."
+                )
+            )
+        }
+
         if let topN = extractTopNByColumn(from: lowercased) {
             return .command(
                 DuckDBCommandPlan(
@@ -800,6 +810,31 @@ public enum AssistantPlanner {
     }
 
     /// Extracts a table name from "count [table]" or "count rows in [table]"
+    /// Extracts "join [table1] and [table2] on [column]" pattern
+    static func extractJoinPattern(from lowercased: String) -> (table1: String, table2: String, column: String)? {
+        let patterns = [
+            "join (\\w+) and (\\w+) on (\\w+)",
+            "join (\\w+) with (\\w+) on (\\w+)",
+            "join (\\w+) and (\\w+) using (\\w+)",
+        ]
+
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)),
+               match.numberOfRanges >= 4,
+               let t1Range = Range(match.range(at: 1), in: lowercased),
+               let t2Range = Range(match.range(at: 2), in: lowercased),
+               let colRange = Range(match.range(at: 3), in: lowercased) {
+                return (
+                    table1: String(lowercased[t1Range]),
+                    table2: String(lowercased[t2Range]),
+                    column: String(lowercased[colRange])
+                )
+            }
+        }
+        return nil
+    }
+
     /// Extracts "top N by column from table" pattern
     static func extractTopNByColumn(from lowercased: String) -> (table: String, column: String, limit: Int)? {
         let patterns = [

@@ -331,6 +331,45 @@ public final class SiftViewModel: ObservableObject {
         TranscriptAnalytics.characterCount(in: transcript)
     }
 
+    /// Smart prompt suggestions based on current context
+    public var contextualSuggestions: [String] {
+        var suggestions: [String] = []
+
+        if sources.isEmpty {
+            suggestions.append("Open a data file to get started")
+            return suggestions
+        }
+
+        if commandCount == 0 {
+            if let source = selectedSource {
+                switch source.kind {
+                case .parquet, .csv, .json:
+                    suggestions.append("Preview rows")
+                    suggestions.append("Show schema")
+                    suggestions.append("Count rows")
+                case .duckdb:
+                    suggestions.append("Show tables")
+                    suggestions.append("Database info")
+                }
+            }
+            return suggestions
+        }
+
+        // After some commands have been run
+        if let source = selectedSource, source.kind == .duckdb {
+            suggestions.append("Show columns")
+            if commandCount < 5 {
+                suggestions.append("Summarize data")
+            }
+        }
+
+        if executionHistory.contains(where: { !$0.succeeded }) {
+            suggestions.append("Check the error and try a different query")
+        }
+
+        return suggestions
+    }
+
     /// Cancel the currently running command
     public func cancelRunningCommand() {
         guard isRunning else { return }
