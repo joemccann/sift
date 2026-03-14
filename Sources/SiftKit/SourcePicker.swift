@@ -19,4 +19,16 @@ enum SourcePicker {
 
         return panel.runModal() == .OK ? panel.url : nil
     }
+
+    @MainActor
+    static func pickDirectory() -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a directory to scan for .duckdb, .db, and .parquet files."
+        panel.prompt = "Scan"
+
+        return panel.runModal() == .OK ? panel.url : nil
+    }
 }

@@ -114,6 +114,15 @@ public struct SiftRootView: View {
                         .accessibilityLabel("Source \(source.displayName)")
                     }
                 }
+
+                Button {
+                    viewModel.promptForDirectoryScan()
+                } label: {
+                    Label("Scan Directory", systemImage: "folder.badge.questionmark")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("sidebar-scan-directory")
             }
         }
         .listStyle(.sidebar)

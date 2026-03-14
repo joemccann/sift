@@ -190,6 +190,14 @@ public final class SiftViewModel: ObservableObject {
         importSource(url: url)
     }
 
+    @MainActor
+    public func promptForDirectoryScan() {
+        guard let url = SourcePicker.pickDirectory() else {
+            return
+        }
+        scanDirectory(url)
+    }
+
     public func selectSource(_ source: DataSource) {
         selectedSource = source
         selectedDestination = .assistant
@@ -366,6 +374,41 @@ public final class SiftViewModel: ObservableObject {
     public func clearConversation() {
         transcript = Self.initialTranscript
         lastExecution = nil
+        persistSnapshot()
+    }
+
+    public func scanDirectory(_ directory: URL) {
+        let discovered = SourceScanner.scan(directory: directory)
+        let existingPaths = Set(sources.map { $0.url.standardizedFileURL })
+        let newSources = discovered.filter { !existingPaths.contains($0.url.standardizedFileURL) }
+
+        guard !newSources.isEmpty else {
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Scan Complete",
+                    body: "No new `.duckdb`, `.db`, or `.parquet` files found in `\(directory.lastPathComponent)`."
+                )
+            )
+            return
+        }
+
+        for source in newSources {
+            sources.insert(source, at: 0)
+        }
+        if selectedSource == nil {
+            selectedSource = newSources.first
+        }
+        selectedDestination = .assistant
+
+        let summary = newSources.map { "• \($0.displayName)" }.joined(separator: "\n")
+        appendTranscript(
+            TranscriptItem(
+                role: .system,
+                title: "Sources Discovered",
+                body: "Found \(newSources.count) source\(newSources.count == 1 ? "" : "s") in `\(directory.lastPathComponent)`:\n\(summary)"
+            )
+        )
         persistSnapshot()
     }
 

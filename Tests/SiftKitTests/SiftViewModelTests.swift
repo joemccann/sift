@@ -188,6 +188,57 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.isSetupFlowPresented)
     }
 
+    func testScanDirectoryImportsDiscoveredSources() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sift-vm-scan-\(UUID().uuidString)")
+        try! FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let parquet = tempDir.appendingPathComponent("data.parquet")
+        let duckdb = tempDir.appendingPathComponent("market.duckdb")
+        FileManager.default.createFile(atPath: parquet.path, contents: nil)
+        FileManager.default.createFile(atPath: duckdb.path, contents: nil)
+
+        viewModel.scanDirectory(tempDir)
+
+        XCTAssertEqual(viewModel.sources.count, 2)
+        XCTAssertNotNil(viewModel.selectedSource)
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "Sources Discovered" }))
+    }
+
+    func testScanDirectorySkipsDuplicates() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sift-vm-scan-dup-\(UUID().uuidString)")
+        try! FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let parquet = tempDir.appendingPathComponent("data.parquet")
+        FileManager.default.createFile(atPath: parquet.path, contents: nil)
+
+        viewModel.importSource(url: parquet)
+        let countBefore = viewModel.sources.count
+
+        viewModel.scanDirectory(tempDir)
+
+        XCTAssertEqual(viewModel.sources.count, countBefore)
+    }
+
     func testMetalSnapshotTracksDestinationAndProviderReadiness() {
         let secretStore = MemorySecretStore(keys: [.gemini: "gem-key"])
         let viewModel = SiftViewModel(
