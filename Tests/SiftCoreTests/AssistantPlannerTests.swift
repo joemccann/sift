@@ -865,6 +865,98 @@ final class MetalWorkspaceSnapshotTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB SQL passthrough patterns
+
+final class DuckDBSQLPassthroughTests: XCTestCase {
+    func testSelectStatementPassesThrough() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "SELECT COUNT(*) FROM trades;", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertEqual(plan.sql, "SELECT COUNT(*) FROM trades;")
+    }
+
+    func testWithCTEPassesThrough() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "WITH cte AS (SELECT 1) SELECT * FROM cte;", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("WITH cte"))
+    }
+
+    func testPragmaStatementPassesThrough() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "PRAGMA table_info('trades');", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("PRAGMA"))
+    }
+}
+
+// MARK: - Multiple command interactions
+
+final class CommandInteractionTests: XCTestCase {
+    func testRawSQLTakesPrecedenceOverSourcePatterns() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "/sql SELECT custom_column FROM read_parquet('/tmp/data.parquet');", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("custom_column"))
+    }
+
+    func testRawDuckDBTakesPrecedenceOverEverything() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "/duckdb :memory: -c \"SELECT 1;\"", source: source)
+
+        guard case let .rawCommand(args) = action else {
+            return XCTFail("Expected raw command")
+        }
+
+        XCTAssertTrue(args.contains(":memory:"))
+    }
+
+    func testSchemaKeywordInDifferentContexts() {
+        // Parquet
+        let parquetSource = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let parquetAction = AssistantPlanner.plan(prompt: "Show me the schema", source: parquetSource)
+        if case let .command(plan) = parquetAction {
+            XCTAssertTrue(plan.sql.contains("DESCRIBE"))
+        } else {
+            XCTFail("Expected command")
+        }
+
+        // CSV
+        let csvSource = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv)
+        let csvAction = AssistantPlanner.plan(prompt: "Show me the schema", source: csvSource)
+        if case let .command(plan) = csvAction {
+            XCTAssertTrue(plan.sql.contains("DESCRIBE"))
+        } else {
+            XCTFail("Expected command")
+        }
+
+        // JSON
+        let jsonSource = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let jsonAction = AssistantPlanner.plan(prompt: "Show me the schema", source: jsonSource)
+        if case let .command(plan) = jsonAction {
+            XCTAssertTrue(plan.sql.contains("DESCRIBE"))
+        } else {
+            XCTFail("Expected command")
+        }
+    }
+}
+
 // MARK: - Describe table pattern
 
 final class DescribeTableTests: XCTestCase {

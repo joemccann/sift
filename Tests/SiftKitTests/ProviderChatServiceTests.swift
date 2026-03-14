@@ -246,6 +246,149 @@ final class ProviderChatServiceTests: XCTestCase {
         XCTAssertTrue(explanation.contains("count rows by category") || explanation.contains("breakdown"))
     }
 
+    func testCLIUnavailableThrowsError() async {
+        let service = ProviderChatService(
+            processExecutor: CapturingProcessExecutor(),
+            secretStore: MemorySecretStore(),
+            baseEnvironment: [:]
+        )
+
+        var settings = AppSettings(hasCompletedSetup: true, defaultProvider: .claude)
+        settings.setPreference(ProviderPreference(authMode: .localCLI, customModel: ""), for: .claude)
+
+        do {
+            _ = try await service.respond(
+                prompt: "Test",
+                source: nil,
+                transcript: [],
+                settings: settings,
+                providerStatuses: [ProviderStatus(provider: .claude, cliInstalled: false, cliPath: nil, apiKeyPresent: false, environmentKeyPresent: false)]
+            )
+            XCTFail("Should have thrown")
+        } catch {
+            XCTAssertTrue(error is ProviderChatError)
+        }
+    }
+
+    func testMissingAPIKeyThrowsError() async {
+        let executor = CapturingProcessExecutor()
+        executor.handler = { _, _, _ in
+            ProcessExecutionResult(stdout: #"{"result":"OK"}"#, stderr: "", exitCode: 0)
+        }
+
+        let service = ProviderChatService(
+            processExecutor: executor,
+            secretStore: MemorySecretStore(),
+            baseEnvironment: [:]
+        )
+
+        var settings = AppSettings(hasCompletedSetup: true, defaultProvider: .claude)
+        settings.setPreference(ProviderPreference(authMode: .apiKey, customModel: ""), for: .claude)
+
+        do {
+            _ = try await service.respond(
+                prompt: "Test",
+                source: nil,
+                transcript: [],
+                settings: settings,
+                providerStatuses: [ProviderStatus(provider: .claude, cliInstalled: true, cliPath: "/usr/bin/claude", apiKeyPresent: false, environmentKeyPresent: false)]
+            )
+            XCTFail("Should have thrown")
+        } catch let error as ProviderChatError {
+            XCTAssertTrue(error.localizedDescription.contains("API key") == true)
+        } catch {
+            XCTFail("Wrong error type: \(error)")
+        }
+    }
+
+    func testProcessFailureThrowsError() async {
+        let executor = CapturingProcessExecutor()
+        executor.handler = { _, _, _ in
+            ProcessExecutionResult(stdout: "", stderr: "connection refused", exitCode: 1)
+        }
+
+        let service = ProviderChatService(
+            processExecutor: executor,
+            secretStore: MemorySecretStore(),
+            baseEnvironment: [:]
+        )
+
+        var settings = AppSettings(hasCompletedSetup: true, defaultProvider: .claude)
+        settings.setPreference(ProviderPreference(authMode: .localCLI, customModel: ""), for: .claude)
+
+        do {
+            _ = try await service.respond(
+                prompt: "Test",
+                source: nil,
+                transcript: [],
+                settings: settings,
+                providerStatuses: [ProviderStatus(provider: .claude, cliInstalled: true, cliPath: "/usr/bin/claude", apiKeyPresent: false, environmentKeyPresent: false)]
+            )
+            XCTFail("Should have thrown")
+        } catch let error as ProviderChatError {
+            XCTAssertTrue(error.localizedDescription.contains("connection refused") == true)
+        } catch {
+            XCTFail("Wrong error type: \(error)")
+        }
+    }
+
+    func testGenerateSQLReturnsStructuredResponse() async throws {
+        let executor = CapturingProcessExecutor()
+        executor.handler = { _, _, _ in
+            ProcessExecutionResult(
+                stdout: #"{"result":"Here's your query:\n\n```sql\nSELECT * FROM trades;\n```\n\nThis fetches all trades."}"#,
+                stderr: "",
+                exitCode: 0
+            )
+        }
+
+        let service = ProviderChatService(
+            processExecutor: executor,
+            secretStore: MemorySecretStore(),
+            baseEnvironment: [:]
+        )
+
+        var settings = AppSettings(hasCompletedSetup: true, defaultProvider: .claude)
+        settings.setPreference(ProviderPreference(authMode: .localCLI, customModel: ""), for: .claude)
+
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let response = try await service.generateSQL(
+            prompt: "show me all trades",
+            source: source,
+            transcript: [],
+            settings: settings,
+            providerStatuses: [ProviderStatus(provider: .claude, cliInstalled: true, cliPath: "/usr/bin/claude", apiKeyPresent: false, environmentKeyPresent: false)]
+        )
+
+        XCTAssertEqual(response.sql, "SELECT * FROM trades;")
+        XCTAssertEqual(response.provider, .claude)
+    }
+
+    func testProviderChatErrorDescriptions() {
+        let cliError = ProviderChatError.cliUnavailable("CLI not found")
+        XCTAssertEqual(cliError.errorDescription, "CLI not found")
+
+        let keyError = ProviderChatError.missingAPIKey("No key")
+        XCTAssertEqual(keyError.errorDescription, "No key")
+
+        let processError = ProviderChatError.processFailure("Crashed")
+        XCTAssertEqual(processError.errorDescription, "Crashed")
+
+        let malformedError = ProviderChatError.malformedOutput("Bad JSON")
+        XCTAssertEqual(malformedError.errorDescription, "Bad JSON")
+    }
+
+    func testProviderChatErrorEquality() {
+        XCTAssertEqual(
+            ProviderChatError.cliUnavailable("A"),
+            ProviderChatError.cliUnavailable("A")
+        )
+        XCTAssertNotEqual(
+            ProviderChatError.cliUnavailable("A"),
+            ProviderChatError.missingAPIKey("A")
+        )
+    }
+
     func testCodexReadsLastMessageFile() async throws {
         let executor = CapturingProcessExecutor()
         executor.handler = { _, arguments, _ in
