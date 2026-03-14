@@ -1814,6 +1814,119 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sources.first?.displayName, "data.parquet")
     }
 
+    // MARK: - Tag on nonexistent item
+
+    func testAddTagToNonexistentItemDoesNothing() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.addTag("test", to: UUID())
+        XCTAssertTrue(viewModel.allTags.isEmpty)
+    }
+
+    func testRemoveTagFromNonexistentItemDoesNothing() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello", tags: ["x"]),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.removeTag("x", from: UUID()) // wrong ID
+        XCTAssertEqual(viewModel.allTags, ["x"]) // unchanged
+    }
+
+    // MARK: - Source alias edge cases
+
+    func testSetAliasOnNonexistentSourceDoesNothing() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.setSourceAlias("Test", for: UUID())
+        XCTAssertTrue(viewModel.sources.isEmpty) // no crash
+    }
+
+    func testAliasWithWhitespaceIsTrimmed() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+        let sourceID = viewModel.sources.first!.id
+        viewModel.setSourceAlias("  Prices  ", for: sourceID)
+        XCTAssertEqual(viewModel.sources.first?.alias, "Prices")
+    }
+
+    // MARK: - Mixed workflow tests
+
+    func testTagPinAndSearchWorkTogether() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "Result", body: "AAPL data here"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let itemID = viewModel.transcript.first!.id
+
+        // Tag it
+        viewModel.addTag("important", to: itemID)
+        XCTAssertEqual(viewModel.transcriptItems(withTag: "important").count, 1)
+
+        // Pin it
+        viewModel.togglePin(for: itemID)
+        XCTAssertEqual(viewModel.pinnedItems.count, 1)
+
+        // Search for it
+        viewModel.searchTranscript(query: "AAPL")
+        XCTAssertEqual(viewModel.searchResults.count, 1)
+
+        // All three features work on the same item
+        let item = viewModel.transcript.first!
+        XCTAssertTrue(item.isPinned)
+        XCTAssertEqual(item.tags, ["important"])
+    }
+
+    func testMultipleSourceAliasesWithSearch() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.csv"))
+
+        let aID = viewModel.sources.first(where: { $0.url.lastPathComponent == "a.parquet" })!.id
+        viewModel.setSourceAlias("Apple Prices", for: aID)
+
+        let found = viewModel.findSources(matching: "Apple")
+        XCTAssertEqual(found.count, 1)
+        XCTAssertEqual(found.first?.displayName, "Apple Prices")
+    }
+
     // MARK: - Compact transcript
 
     func testCompactTranscriptFiltersToUserAndResults() {

@@ -2314,3 +2314,48 @@ final class MarkdownDetectorTests: XCTestCase {
     }
 }
 
+// MARK: - DataSource query builder edge cases
+
+final class DataSourceQueryBuilderEdgeCaseTests: XCTestCase {
+    func testSelectQueryEscapesPathWithApostrophe() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/John's file.parquet"), kind: .parquet)
+        let sql = source.selectQuery(limit: 5)
+        XCTAssertTrue(sql?.contains("John''s") == true)
+        XCTAssertFalse(sql?.contains("John's") == true)
+    }
+
+    func testCountQueryForCSV() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv)
+        let sql = source.countQuery()
+        XCTAssertTrue(sql?.contains("read_csv") == true)
+        XCTAssertTrue(sql?.contains("COUNT(*)") == true)
+    }
+
+    func testSelectQueryForJSON() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let sql = source.selectQuery(columns: "name, age", limit: 100)
+        XCTAssertEqual(sql, "SELECT name, age FROM read_json('/tmp/data.json') LIMIT 100;")
+    }
+}
+
+// MARK: - CommandRegistry tab completion edge cases
+
+final class CommandRegistryEdgeCaseTests: XCTestCase {
+    func testCompletionForSlashSReturnsMultiple() {
+        let results = CommandRegistry.completions(for: "/s")
+        // /sources, /status, /stats, /sql
+        XCTAssertGreaterThanOrEqual(results.count, 3)
+    }
+
+    func testCompletionForSlashExReturnsExport() {
+        let results = CommandRegistry.completions(for: "/ex")
+        XCTAssertTrue(results.contains(where: { $0.command == "/export" }))
+    }
+
+    func testCompletionForFullCommandReturnsExactly() {
+        let results = CommandRegistry.completions(for: "/version")
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.command, "/version")
+    }
+}
+
