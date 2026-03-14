@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import DuckDBAdapter
 import SiftCore
@@ -414,6 +415,7 @@ private struct SetupSummaryView: View {
 
 private struct TranscriptItemView: View {
     let item: TranscriptItem
+    @State private var copied = false
 
     var body: some View {
         VStack(alignment: item.role == .user ? .trailing : .leading, spacing: 8) {
@@ -421,83 +423,119 @@ private struct TranscriptItemView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text(item.body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            ZStack(alignment: .topTrailing) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(item.body)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                switch item.kind {
-                case .text:
-                    EmptyView()
+                    switch item.kind {
+                    case .text:
+                        EmptyView()
 
-                case let .commandPreview(sql, sourceName):
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(sourceName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(sql)
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(.black.opacity(0.18))
-                    )
-
-                case let .rawCommandPreview(command):
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("duckdb")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(command)
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(.black.opacity(0.18))
-                    )
-
-                case let .commandResult(exitCode, stdout, stderr):
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Exit code: \(exitCode)")
-                            .font(.caption)
-                            .foregroundStyle(exitCode == 0 ? .green : .red)
-
-                        if !stdout.isEmpty {
-                            ScrollView(.horizontal) {
-                                Text(stdout)
-                                    .font(.system(.body, design: .monospaced))
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .frame(maxHeight: 220)
-                        }
-
-                        if !stderr.isEmpty {
-                            Text(stderr)
+                    case let .commandPreview(sql, sourceName):
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(sourceName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(sql)
                                 .font(.system(.body, design: .monospaced))
-                                .foregroundStyle(.red)
                                 .textSelection(.enabled)
                         }
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(.black.opacity(0.18))
+                        )
+
+                    case let .rawCommandPreview(command):
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("duckdb")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(command)
+                                .font(.system(.body, design: .monospaced))
+                                .textSelection(.enabled)
+                        }
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(.black.opacity(0.18))
+                        )
+
+                    case let .commandResult(exitCode, stdout, stderr):
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Exit code: \(exitCode)")
+                                .font(.caption)
+                                .foregroundStyle(exitCode == 0 ? .green : .red)
+
+                            if !stdout.isEmpty {
+                                ScrollView(.horizontal) {
+                                    Text(stdout)
+                                        .font(.system(.body, design: .monospaced))
+                                        .textSelection(.enabled)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .frame(maxHeight: 220)
+                            }
+
+                            if !stderr.isEmpty {
+                                Text(stderr)
+                                    .font(.system(.body, design: .monospaced))
+                                    .foregroundStyle(.red)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(.black.opacity(0.18))
+                        )
                     }
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(.black.opacity(0.18))
-                    )
                 }
+                .padding(14)
+                .frame(maxWidth: 760, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(backgroundStyle)
+                )
+
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(copyableText, forType: .string)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        copied = false
+                    }
+                } label: {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(copied ? .green : .secondary)
+                        .frame(width: 28, height: 28)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .padding(8)
+                .help(copied ? "Copied!" : "Copy to clipboard")
             }
-            .padding(14)
-            .frame(maxWidth: 760, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(backgroundStyle)
-            )
         }
         .frame(maxWidth: .infinity, alignment: item.role == .user ? .trailing : .leading)
+    }
+
+    private var copyableText: String {
+        switch item.kind {
+        case .text:
+            return item.body
+        case let .commandPreview(sql, _):
+            return item.body.isEmpty ? sql : "\(item.body)\n\n\(sql)"
+        case let .rawCommandPreview(command):
+            return item.body.isEmpty ? command : "\(item.body)\n\n\(command)"
+        case let .commandResult(_, stdout, stderr):
+            var parts = [item.body]
+            if !stdout.isEmpty { parts.append(stdout) }
+            if !stderr.isEmpty { parts.append(stderr) }
+            return parts.filter { !$0.isEmpty }.joined(separator: "\n\n")
+        }
     }
 
     private var backgroundStyle: some ShapeStyle {
