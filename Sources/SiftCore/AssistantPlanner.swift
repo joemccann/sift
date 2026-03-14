@@ -697,6 +697,16 @@ public enum AssistantPlanner {
             )
         }
 
+        if let filter = extractWhereFilter(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM \(filter.table) WHERE \(filter.condition) LIMIT 25;",
+                    explanation: "Filtering \(filter.table) where \(filter.condition) in \(source.displayName)."
+                )
+            )
+        }
+
         if let joinInfo = extractJoinPattern(from: lowercased) {
             return .command(
                 DuckDBCommandPlan(
@@ -810,6 +820,30 @@ public enum AssistantPlanner {
     }
 
     /// Extracts a table name from "count [table]" or "count rows in [table]"
+    /// Extracts "filter [table] where [condition]" or "where [condition] in [table]" pattern
+    static func extractWhereFilter(from lowercased: String) -> (table: String, condition: String)? {
+        let patterns = [
+            "filter (\\w+) where (.+)",
+            "show (\\w+) where (.+)",
+            "from (\\w+) where (.+)",
+        ]
+
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)),
+               match.numberOfRanges >= 3,
+               let tableRange = Range(match.range(at: 1), in: lowercased),
+               let condRange = Range(match.range(at: 2), in: lowercased) {
+                let table = String(lowercased[tableRange])
+                let condition = String(lowercased[condRange]).trimmingCharacters(in: .whitespaces)
+                if !condition.isEmpty {
+                    return (table: table, condition: condition)
+                }
+            }
+        }
+        return nil
+    }
+
     /// Extracts "join [table1] and [table2] on [column]" pattern
     static func extractJoinPattern(from lowercased: String) -> (table1: String, table2: String, column: String)? {
         let patterns = [

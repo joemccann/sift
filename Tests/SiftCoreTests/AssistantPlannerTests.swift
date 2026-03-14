@@ -2711,6 +2711,50 @@ final class DuckDBOutputParserTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB WHERE filter
+
+final class DuckDBWhereFilterTests: XCTestCase {
+    func testFilterTradesWhereCondition() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "filter trades where price > 100", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("WHERE price > 100"))
+        XCTAssertTrue(plan.sql.contains("FROM trades"))
+    }
+
+    func testShowOrdersWhereStatus() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "show orders where status = 'filled'", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("WHERE"))
+        XCTAssertTrue(plan.sql.contains("orders"))
+    }
+
+    func testExtractWhereFilter() {
+        let result = AssistantPlanner.extractWhereFilter(from: "filter trades where price > 100")
+        XCTAssertEqual(result?.table, "trades")
+        XCTAssertEqual(result?.condition, "price > 100")
+    }
+
+    func testExtractWhereFilterFromPattern() {
+        let result = AssistantPlanner.extractWhereFilter(from: "from users where age >= 21")
+        XCTAssertEqual(result?.table, "users")
+        XCTAssertEqual(result?.condition, "age >= 21")
+    }
+
+    func testExtractWhereFilterNoMatch() {
+        XCTAssertNil(AssistantPlanner.extractWhereFilter(from: "show me all data"))
+    }
+}
+
 // MARK: - DuckDB join pattern
 
 final class DuckDBJoinPatternTests: XCTestCase {
