@@ -165,6 +165,18 @@ public final class SiftViewModel: ObservableObject {
         CommandRegistry.completions(for: composerText)
     }
 
+    /// Pinned transcript items
+    public var pinnedItems: [TranscriptItem] {
+        transcript.filter(\.isPinned)
+    }
+
+    /// Toggle pin state for a transcript item
+    public func togglePin(for itemID: UUID) {
+        guard let index = transcript.firstIndex(where: { $0.id == itemID }) else { return }
+        transcript[index].isPinned.toggle()
+        persistSnapshot()
+    }
+
     /// Cancel the currently running command
     public func cancelRunningCommand() {
         guard isRunning else { return }
@@ -425,6 +437,34 @@ public final class SiftViewModel: ObservableObject {
                     body: stats.joined(separator: "\n")
                 )
             )
+
+        case .showSourceInfo:
+            if let source = selectedSource {
+                let lines = [
+                    "**Source Info**",
+                    "",
+                    "• Name: \(source.displayName)",
+                    "• Type: \(source.kind.displayLabel)",
+                    "• Path: `\(source.path)`",
+                    "• Size: \(source.fileSizeDescription)",
+                    "• Added: \(source.addedAt.formatted())",
+                ]
+                replaceThinkingItem(thinkingItem.id, with:
+                    TranscriptItem(
+                        role: .assistant,
+                        title: "Source Info",
+                        body: lines.joined(separator: "\n")
+                    )
+                )
+            } else {
+                replaceThinkingItem(thinkingItem.id, with:
+                    TranscriptItem(
+                        role: .assistant,
+                        title: "No Source",
+                        body: "No active source selected. Import a file first."
+                    )
+                )
+            }
 
         case .undoLastMessage:
             removeThinkingItem(thinkingItem.id)

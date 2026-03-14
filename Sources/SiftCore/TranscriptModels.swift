@@ -89,6 +89,7 @@ public struct TranscriptItem: Identifiable, Equatable, Sendable, Codable {
     public let body: String
     public let kind: TranscriptKind
     public let timestamp: Date
+    public var isPinned: Bool
 
     public init(
         id: UUID = UUID(),
@@ -96,7 +97,8 @@ public struct TranscriptItem: Identifiable, Equatable, Sendable, Codable {
         title: String,
         body: String,
         kind: TranscriptKind = .text,
-        timestamp: Date = Date()
+        timestamp: Date = Date(),
+        isPinned: Bool = false
     ) {
         self.id = id
         self.role = role
@@ -104,6 +106,7 @@ public struct TranscriptItem: Identifiable, Equatable, Sendable, Codable {
         self.body = body
         self.kind = kind
         self.timestamp = timestamp
+        self.isPinned = isPinned
     }
 }
 

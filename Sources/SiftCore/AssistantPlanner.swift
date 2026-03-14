@@ -30,6 +30,7 @@ public enum AssistantAction: Equatable, Sendable {
     case bookmarkLastCommand
     case undoLastMessage
     case showCommandCount
+    case showSourceInfo
 }
 
 public struct CommandInfo: Equatable, Sendable {
@@ -59,6 +60,7 @@ public enum CommandRegistry {
         CommandInfo(command: "/bookmarks", description: "List saved bookmarks"),
         CommandInfo(command: "/undo", description: "Remove last user message"),
         CommandInfo(command: "/stats", description: "Show session statistics"),
+        CommandInfo(command: "/info", description: "Show active source details"),
     ]
 
     /// Returns commands matching a prefix (for tab completion)
@@ -160,6 +162,10 @@ public enum AssistantPlanner {
 
         if trimmed.caseInsensitiveCompare("/stats") == .orderedSame {
             return .showCommandCount
+        }
+
+        if trimmed.caseInsensitiveCompare("/info") == .orderedSame {
+            return .showSourceInfo
         }
 
         if trimmed.caseInsensitiveCompare("What can you do?") == .orderedSame || trimmed.caseInsensitiveCompare("/help") == .orderedSame {

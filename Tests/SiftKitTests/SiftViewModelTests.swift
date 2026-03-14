@@ -1631,6 +1631,84 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
     }
 
+    // MARK: - Pinning
+
+    func testTogglePinOnTranscriptItem() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let itemID = viewModel.transcript.first!.id
+        XCTAssertFalse(viewModel.transcript.first!.isPinned)
+        XCTAssertTrue(viewModel.pinnedItems.isEmpty)
+
+        viewModel.togglePin(for: itemID)
+        XCTAssertTrue(viewModel.transcript.first!.isPinned)
+        XCTAssertEqual(viewModel.pinnedItems.count, 1)
+
+        viewModel.togglePin(for: itemID)
+        XCTAssertFalse(viewModel.transcript.first!.isPinned)
+        XCTAssertTrue(viewModel.pinnedItems.isEmpty)
+    }
+
+    func testTogglePinForNonexistentIDDoesNothing() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.togglePin(for: UUID()) // random UUID
+        XCTAssertTrue(viewModel.pinnedItems.isEmpty) // No crash, no change
+    }
+
+    // MARK: - Source info
+
+    func testInfoCommandWithSourceShowsDetails() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/test.parquet"))
+
+        viewModel.composerText = "/info"
+        await viewModel.sendPrompt()
+
+        let infoItems = viewModel.transcript.filter { $0.title == "Source Info" }
+        XCTAssertFalse(infoItems.isEmpty)
+        let body = infoItems.last!.body
+        XCTAssertTrue(body.contains("test.parquet"))
+        XCTAssertTrue(body.contains("Parquet"))
+    }
+
+    func testInfoCommandWithNoSourceShowsGuidance() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/info"
+        await viewModel.sendPrompt()
+
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "No Source" }))
+    }
+
     // MARK: - Tab completion
 
     func testCommandCompletionsForSlashH() {

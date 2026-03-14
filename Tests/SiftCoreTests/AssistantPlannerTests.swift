@@ -1470,6 +1470,44 @@ final class CommandRegistryTests: XCTestCase {
     }
 }
 
+// MARK: - /info command
+
+final class InfoCommandTests: XCTestCase {
+    func testInfoCommandReturnsShowSourceInfo() {
+        let action = AssistantPlanner.plan(prompt: "/info", source: nil)
+        XCTAssertEqual(action, .showSourceInfo)
+    }
+
+    func testInfoInCommandRegistry() {
+        XCTAssertTrue(CommandRegistry.allCommands.contains(where: { $0.command == "/info" }))
+    }
+}
+
+// MARK: - TranscriptItem pinning
+
+final class TranscriptItemPinningTests: XCTestCase {
+    func testDefaultIsPinnedIsFalse() {
+        let item = TranscriptItem(role: .assistant, title: "A", body: "Hello")
+        XCTAssertFalse(item.isPinned)
+    }
+
+    func testPinnedItemCodableRoundTrip() throws {
+        var item = TranscriptItem(role: .assistant, title: "A", body: "Hello", isPinned: true)
+        XCTAssertTrue(item.isPinned)
+
+        let data = try JSONEncoder().encode(item)
+        let restored = try JSONDecoder().decode(TranscriptItem.self, from: data)
+        XCTAssertTrue(restored.isPinned)
+    }
+
+    func testUnpinnedItemCodableRoundTrip() throws {
+        let item = TranscriptItem(role: .user, title: "You", body: "Hi")
+        let data = try JSONEncoder().encode(item)
+        let restored = try JSONDecoder().decode(TranscriptItem.self, from: data)
+        XCTAssertFalse(restored.isPinned)
+    }
+}
+
 // MARK: - QueryTemplate model
 
 final class QueryTemplateTests: XCTestCase {
