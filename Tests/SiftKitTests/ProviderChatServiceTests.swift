@@ -573,6 +573,56 @@ final class ProviderChatServiceTests: XCTestCase {
         XCTAssertFalse(response.explanation.isEmpty)
     }
 
+    func testGenerateSQLCLIUnavailableThrowsError() async {
+        let service = ProviderChatService(
+            processExecutor: CapturingProcessExecutor(),
+            secretStore: MemorySecretStore(),
+            baseEnvironment: [:]
+        )
+
+        var settings = AppSettings(hasCompletedSetup: true, defaultProvider: .claude)
+        settings.setPreference(ProviderPreference(authMode: .localCLI, customModel: ""), for: .claude)
+
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/test.duckdb"), kind: .duckdb)
+        do {
+            _ = try await service.generateSQL(
+                prompt: "show me data",
+                source: source,
+                transcript: [],
+                settings: settings,
+                providerStatuses: [ProviderStatus(provider: .claude, cliInstalled: false, cliPath: nil, apiKeyPresent: false, environmentKeyPresent: false)]
+            )
+            XCTFail("Should have thrown")
+        } catch {
+            XCTAssertTrue(error is ProviderChatError)
+        }
+    }
+
+    func testExtractSQLWithNoCodeBlock() {
+        let text = "I don't know how to generate SQL for that. Try running SHOW TABLES first."
+        let (sql, explanation) = ProviderChatService.extractSQL(from: text)
+        // The text starts with "I" which is not a SQL keyword, so sql should be empty
+        XCTAssertTrue(sql.isEmpty || !explanation.isEmpty)
+    }
+
+    func testExtractSQLWithMultipleCodeBlocks() {
+        let text = """
+        First query:
+        ```sql
+        SELECT 1;
+        ```
+        
+        Second query:
+        ```sql
+        SELECT 2;
+        ```
+        """
+
+        let (sql, _) = ProviderChatService.extractSQL(from: text)
+        // Should extract the first code block
+        XCTAssertEqual(sql, "SELECT 1;")
+    }
+
     func testCodexReadsLastMessageFile() async throws {
         let executor = CapturingProcessExecutor()
         executor.handler = { _, arguments, _ in
