@@ -130,6 +130,25 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
         return "SELECT COUNT(*) AS row_count FROM \(readExpr);"
     }
 
+    /// Build a SUMMARIZE query for this source
+    public func summarizeQuery() -> String? {
+        guard let readExpr = duckDBReadExpression else { return nil }
+        return "SUMMARIZE SELECT * FROM \(readExpr);"
+    }
+
+    /// Build a DESCRIBE query for this source
+    public func describeQuery() -> String? {
+        guard let readExpr = duckDBReadExpression else {
+            return "DESCRIBE;" // DuckDB database — describe the whole db
+        }
+        return "DESCRIBE SELECT * FROM \(readExpr);"
+    }
+
+    /// Check if this source represents a tabular file format (not a database)
+    public var isTabularFile: Bool {
+        kind != .duckdb
+    }
+
     public static func from(url: URL) -> DataSource? {
         switch url.pathExtension.lowercased() {
         case "parquet":

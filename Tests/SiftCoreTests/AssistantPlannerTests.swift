@@ -2438,6 +2438,38 @@ final class TranscriptAnalyticsTests: XCTestCase {
     }
 }
 
+// MARK: - DataSource query builders (summarize, describe)
+
+final class DataSourceSummarizeDescribeTests: XCTestCase {
+    func testSummarizeQueryForParquet() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        XCTAssertEqual(source.summarizeQuery(), "SUMMARIZE SELECT * FROM read_parquet('/tmp/data.parquet');")
+    }
+
+    func testSummarizeQueryForDuckDBReturnsNil() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        XCTAssertNil(source.summarizeQuery())
+    }
+
+    func testDescribeQueryForCSV() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv)
+        XCTAssertTrue(source.describeQuery()?.contains("DESCRIBE") == true)
+        XCTAssertTrue(source.describeQuery()?.contains("read_csv") == true)
+    }
+
+    func testDescribeQueryForDuckDB() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        XCTAssertEqual(source.describeQuery(), "DESCRIBE;")
+    }
+
+    func testIsTabularFile() {
+        XCTAssertTrue(DataSource(url: URL(fileURLWithPath: "/tmp/a.parquet"), kind: .parquet).isTabularFile)
+        XCTAssertTrue(DataSource(url: URL(fileURLWithPath: "/tmp/a.csv"), kind: .csv).isTabularFile)
+        XCTAssertTrue(DataSource(url: URL(fileURLWithPath: "/tmp/a.json"), kind: .json).isTabularFile)
+        XCTAssertFalse(DataSource(url: URL(fileURLWithPath: "/tmp/a.duckdb"), kind: .duckdb).isTabularFile)
+    }
+}
+
 // MARK: - DuckDB top N by column
 
 final class DuckDBTopNByColumnTests: XCTestCase {

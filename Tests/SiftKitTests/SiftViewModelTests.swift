@@ -1814,6 +1814,28 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sources.first?.displayName, "data.parquet")
     }
 
+    // MARK: - Fastest execution
+
+    func testFastestExecutionTracked() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let start = Date()
+        let fast = DuckDBExecutionResult(binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT 1;", stdout: "1", stderr: "", exitCode: 0, startedAt: start, endedAt: start.addingTimeInterval(0.01))
+        let slow = DuckDBExecutionResult(binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT 2;", stdout: "2", stderr: "", exitCode: 0, startedAt: start, endedAt: start.addingTimeInterval(1.0))
+
+        viewModel.recordExecution(slow)
+        viewModel.recordExecution(fast)
+
+        XCTAssertEqual(viewModel.fastestExecutionMs!, 10, accuracy: 1)
+        XCTAssertEqual(viewModel.executionHistory.count, 2)
+    }
+
     // MARK: - Execution stats
 
     func testRecordExecutionTracksStats() {
