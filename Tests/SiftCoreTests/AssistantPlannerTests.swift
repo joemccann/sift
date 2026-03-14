@@ -2005,6 +2005,104 @@ final class DuckDBSampleTableTests: XCTestCase {
     }
 }
 
+// MARK: - Comprehensive planner coverage
+
+final class PlannerEdgeCaseTests: XCTestCase {
+    func testParquetWithNoSourceReturnsGuidance() {
+        let action = AssistantPlanner.plan(prompt: "How do I get started with a parquet file?", source: nil)
+        guard case let .assistantReply(reply) = action else {
+            return XCTFail("Expected assistant reply")
+        }
+        XCTAssertTrue(reply.contains("source"))
+    }
+
+    func testDuckDBKeywordReturnsGuidanceWithoutSource() {
+        let action = AssistantPlanner.plan(prompt: "I want to use duckdb", source: nil)
+        guard case let .assistantReply(reply) = action else {
+            return XCTFail("Expected assistant reply")
+        }
+        XCTAssertTrue(reply.contains("source"))
+    }
+
+    func testWhatCanYouDoReturnsHelp() {
+        let action = AssistantPlanner.plan(prompt: "What can you do?", source: nil)
+        guard case let .assistantReply(reply) = action else {
+            return XCTFail("Expected assistant reply")
+        }
+        XCTAssertTrue(reply.contains("Sift Commands"))
+    }
+
+    func testParquetFieldsListsColumns() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "What fields are there?", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+        XCTAssertTrue(plan.sql.contains("column_name"))
+    }
+
+    func testCSVFieldsListsColumns() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv)
+        let action = AssistantPlanner.plan(prompt: "List fields", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+        XCTAssertTrue(plan.sql.contains("column_name"))
+    }
+
+    func testJSONFieldsListsColumns() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let action = AssistantPlanner.plan(prompt: "Show fields", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+        XCTAssertTrue(plan.sql.contains("column_name"))
+    }
+
+    func testDuckDBDatabaseInfoPattern() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "database info", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+        XCTAssertTrue(plan.sql.contains("database_list"))
+    }
+
+    func testDuckDBListTablesPattern() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "list tables", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+        XCTAssertEqual(plan.sql, "SHOW TABLES;")
+    }
+
+    func testDuckDBListColumnsPattern() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "list columns", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+        XCTAssertTrue(plan.sql.contains("information_schema.columns"))
+    }
+
+    func testDuckDBRowCountsPattern() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "show row counts", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+        XCTAssertTrue(plan.sql.contains("duckdb_tables()"))
+    }
+}
+
 // MARK: - CommandRegistry count
 
 final class CommandRegistryCountTests: XCTestCase {
