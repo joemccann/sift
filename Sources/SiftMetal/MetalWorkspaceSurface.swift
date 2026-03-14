@@ -245,6 +245,8 @@ private final class MetalWorkspaceRenderer: NSObject, MTKViewDelegate {
             1
         case .csv:
             2
+        case .json:
+            3
         case nil:
             -1
         }

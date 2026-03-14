@@ -35,6 +35,8 @@ public final class SiftViewModel: ObservableObject {
     @Published public var isDiagnosticsDrawerPresented = false
     @Published public var isSetupFlowPresented = false
     @Published public private(set) var isRunning = false
+    @Published public var searchQuery = ""
+    @Published public private(set) var searchResults: [TranscriptItem] = []
 
     private let executor: (any CommandExecuting)?
     private let chatResponder: any ProviderResponding
@@ -161,7 +163,7 @@ public final class SiftViewModel: ObservableObject {
                 TranscriptItem(
                     role: .system,
                     title: "Unsupported Source",
-                    body: "Only `.duckdb`, `.db`, `.parquet`, `.csv`, and `.tsv` files are supported."
+                    body: "Only `.duckdb`, `.db`, `.parquet`, `.csv`, `.tsv`, `.json`, `.jsonl`, and `.ndjson` files are supported."
                 )
             )
             return
@@ -448,6 +450,19 @@ public final class SiftViewModel: ObservableObject {
 
     public func requestComposerFocus() {
         composerFocusRequestID += 1
+    }
+
+    public func searchTranscript(query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        searchQuery = trimmed
+        guard !trimmed.isEmpty else {
+            searchResults = []
+            return
+        }
+        searchResults = transcript.filter { item in
+            item.body.localizedCaseInsensitiveContains(trimmed) ||
+            item.title.localizedCaseInsensitiveContains(trimmed)
+        }
     }
 
     public func copyLastResultToClipboard() {

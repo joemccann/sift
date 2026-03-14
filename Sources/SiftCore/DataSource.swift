@@ -4,6 +4,7 @@ public enum DataSourceKind: String, CaseIterable, Codable, Sendable {
     case parquet
     case duckdb
     case csv
+    case json
 }
 
 public struct DataSource: Identifiable, Codable, Equatable, Sendable {
@@ -40,6 +41,8 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
             DataSource(url: url, kind: .duckdb)
         case "csv", "tsv":
             DataSource(url: url, kind: .csv)
+        case "json", "jsonl", "ndjson":
+            DataSource(url: url, kind: .json)
         default:
             nil
         }

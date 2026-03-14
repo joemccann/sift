@@ -49,6 +49,13 @@ public enum PromptLibrary {
                 PromptChip(title: "Count rows", prompt: "Count rows"),
                 PromptChip(title: "Summarize", prompt: "Summarize this data"),
             ]
+        case .json:
+            return [
+                PromptChip(title: "Preview rows", prompt: "Preview this JSON file"),
+                PromptChip(title: "Show schema", prompt: "Show the schema"),
+                PromptChip(title: "Count rows", prompt: "Count rows"),
+                PromptChip(title: "Summarize", prompt: "Summarize this data"),
+            ]
         case .duckdb:
             return [
                 PromptChip(title: "Show tables", prompt: "Show tables"),
@@ -140,6 +147,8 @@ public enum AssistantPlanner {
             return planForParquet(prompt: trimmed, source: source)
         case .csv:
             return planForCSV(prompt: trimmed, source: source)
+        case .json:
+            return planForJSON(prompt: trimmed, source: source)
         case .duckdb:
             return planForDuckDB(prompt: trimmed, source: source)
         }
@@ -272,6 +281,73 @@ public enum AssistantPlanner {
                 DuckDBCommandPlan(
                     source: source,
                     sql: "SELECT * FROM read_csv('\(escapedPath)') LIMIT 25;",
+                    explanation: "Previewing up to 25 rows from \(source.displayName)."
+                )
+            )
+        }
+
+        return .naturalLanguageQuery(prompt: prompt, source: source)
+    }
+
+    private static func planForJSON(prompt: String, source: DataSource) -> AssistantAction {
+        let escapedPath = escapeLiteral(source.path)
+        let lowercased = prompt.lowercased()
+
+        if lowercased.contains("schema") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "DESCRIBE SELECT * FROM read_json('\(escapedPath)');",
+                    explanation: "Inspecting the JSON schema for \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("count") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT COUNT(*) AS row_count FROM read_json('\(escapedPath)');",
+                    explanation: "Counting rows in \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("summarize") || lowercased.contains("summary") || lowercased.contains("statistics") || lowercased.contains("stats") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SUMMARIZE SELECT * FROM read_json('\(escapedPath)');",
+                    explanation: "Generating column statistics for \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("columns") || lowercased.contains("column names") || lowercased.contains("fields") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM read_json('\(escapedPath)'));",
+                    explanation: "Listing column names and types from \(source.displayName)."
+                )
+            )
+        }
+
+        if let limit = extractTopN(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM read_json('\(escapedPath)') LIMIT \(limit);",
+                    explanation: "Showing top \(limit) rows from \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("preview") || lowercased.contains("show") || lowercased.contains("head") || lowercased.contains("first") || lowercased.contains("sample") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM read_json('\(escapedPath)') LIMIT 25;",
                     explanation: "Previewing up to 25 rows from \(source.displayName)."
                 )
             )

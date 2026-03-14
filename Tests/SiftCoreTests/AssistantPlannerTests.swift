@@ -320,4 +320,121 @@ final class AssistantPlannerTests: XCTestCase {
 
         XCTAssertTrue(plan.sql.contains("SUMMARIZE"))
     }
+
+    // MARK: - JSON source support
+
+    func testJSONFileCreatesJSONSource() {
+        let source = DataSource.from(url: URL(fileURLWithPath: "/tmp/data.json"))
+        XCTAssertNotNil(source)
+        XCTAssertEqual(source?.kind, .json)
+        XCTAssertEqual(source?.displayName, "data.json")
+    }
+
+    func testJSONLFileCreatesJSONSource() {
+        let source = DataSource.from(url: URL(fileURLWithPath: "/tmp/data.jsonl"))
+        XCTAssertNotNil(source)
+        XCTAssertEqual(source?.kind, .json)
+    }
+
+    func testNDJSONFileCreatesJSONSource() {
+        let source = DataSource.from(url: URL(fileURLWithPath: "/tmp/data.ndjson"))
+        XCTAssertNotNil(source)
+        XCTAssertEqual(source?.kind, .json)
+    }
+
+    func testJSONPreviewUsesReadJSON() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let action = AssistantPlanner.plan(prompt: "Preview this JSON file", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("read_json('/tmp/data.json')"))
+        XCTAssertTrue(plan.sql.contains("LIMIT 25"))
+    }
+
+    func testJSONSchemaUsesDescribe() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let action = AssistantPlanner.plan(prompt: "Show the schema", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("DESCRIBE"))
+        XCTAssertTrue(plan.sql.contains("read_json"))
+    }
+
+    func testJSONCountUsesCount() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let action = AssistantPlanner.plan(prompt: "Count rows", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("COUNT(*)"))
+        XCTAssertTrue(plan.sql.contains("read_json"))
+    }
+
+    func testJSONSummarizeUsesSummarize() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let action = AssistantPlanner.plan(prompt: "Summarize this data", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("SUMMARIZE"))
+        XCTAssertTrue(plan.sql.contains("read_json"))
+    }
+
+    func testJSONColumnsListsFields() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let action = AssistantPlanner.plan(prompt: "Show columns", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("column_name"))
+        XCTAssertTrue(plan.sql.contains("read_json"))
+    }
+
+    func testJSONTopNUsesLimit() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let action = AssistantPlanner.plan(prompt: "top 5", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("LIMIT 5"))
+        XCTAssertTrue(plan.sql.contains("read_json"))
+    }
+
+    func testJSONNaturalLanguageFallsToNLQuery() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let action = AssistantPlanner.plan(prompt: "What is the average age?", source: source)
+
+        guard case let .naturalLanguageQuery(prompt, queriedSource) = action else {
+            return XCTFail("Expected natural language query, got \(action)")
+        }
+
+        XCTAssertEqual(prompt, "What is the average age?")
+        XCTAssertEqual(queriedSource, source)
+    }
+
+    // MARK: - Unsupported file types
+
+    func testXLSXFileReturnsNil() {
+        let source = DataSource.from(url: URL(fileURLWithPath: "/tmp/data.xlsx"))
+        XCTAssertNil(source)
+    }
+
+    func testTXTFileReturnsNil() {
+        let source = DataSource.from(url: URL(fileURLWithPath: "/tmp/data.txt"))
+        XCTAssertNil(source)
+    }
 }

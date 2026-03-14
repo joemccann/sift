@@ -87,6 +87,8 @@ struct MetalWorkspaceVisualization: Equatable, Sendable {
             sourceSeed = 0.59
         case .csv:
             sourceSeed = 0.41
+        case .json:
+            sourceSeed = 0.57
         case nil:
             sourceSeed = 0.11
         }

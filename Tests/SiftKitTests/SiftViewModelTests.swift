@@ -496,6 +496,122 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(lastItem?.body.contains("clipboard") == true)
     }
 
+    func testImportSourceSelectsJSON() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        let url = URL(fileURLWithPath: "/tmp/data.json")
+
+        viewModel.importSource(url: url)
+
+        XCTAssertEqual(viewModel.selectedSource?.displayName, "data.json")
+        XCTAssertEqual(viewModel.selectedSource?.kind, .json)
+        XCTAssertEqual(viewModel.sources.count, 1)
+    }
+
+    func testImportUnsupportedFileShowsError() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        let url = URL(fileURLWithPath: "/tmp/data.xlsx")
+
+        viewModel.importSource(url: url)
+
+        XCTAssertTrue(viewModel.sources.isEmpty)
+        XCTAssertEqual(viewModel.transcript.last?.title, "Unsupported Source")
+    }
+
+    func testSearchTranscriptFindsMatchingItems() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello world"),
+                TranscriptItem(role: .user, title: "You", body: "Search for AAPL trades"),
+                TranscriptItem(role: .assistant, title: "A", body: "Here are the AAPL results"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.searchTranscript(query: "AAPL")
+
+        XCTAssertEqual(viewModel.searchResults.count, 2)
+        XCTAssertEqual(viewModel.searchQuery, "AAPL")
+    }
+
+    func testSearchTranscriptEmptyQueryClearsResults() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello world"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.searchTranscript(query: "Hello")
+        XCTAssertEqual(viewModel.searchResults.count, 1)
+
+        viewModel.searchTranscript(query: "")
+        XCTAssertTrue(viewModel.searchResults.isEmpty)
+        XCTAssertEqual(viewModel.searchQuery, "")
+    }
+
+    func testSearchTranscriptIsCaseInsensitive() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "DuckDB is great"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.searchTranscript(query: "duckdb")
+        XCTAssertEqual(viewModel.searchResults.count, 1)
+    }
+
+    func testSearchTranscriptMatchesTitle() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "Command Result", body: "exit 0"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.searchTranscript(query: "Command")
+        XCTAssertEqual(viewModel.searchResults.count, 1)
+    }
+
+    func testSearchTranscriptNoMatchReturnsEmpty() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello world"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.searchTranscript(query: "zxcvbnm")
+        XCTAssertTrue(viewModel.searchResults.isEmpty)
+    }
+
     func testMetalSnapshotReflectsSelectedSourceAndExecutionOutcome() async {
         let result = DuckDBExecutionResult(
             binaryPath: "/opt/homebrew/bin/duckdb",

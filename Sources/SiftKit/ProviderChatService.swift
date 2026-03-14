@@ -311,6 +311,11 @@ public final class ProviderChatService: ProviderResponding, @unchecked Sendable 
             The source is a CSV file. Use read_csv('\(source.path)') to query it.
             Example: SELECT * FROM read_csv('\(source.path)') LIMIT 10;
             """
+        case .json:
+            sourceContext = """
+            The source is a JSON file. Use read_json('\(source.path)') to query it.
+            Example: SELECT * FROM read_json('\(source.path)') LIMIT 10;
+            """
         case .duckdb:
             sourceContext = """
             The source is a DuckDB database at: \(source.path)
