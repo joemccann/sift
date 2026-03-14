@@ -1957,6 +1957,33 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.favoriteSources.isEmpty)
     }
 
+    // MARK: - Unique command dedup verification
+
+    func testUniqueCommandHistoryPreservesOrder() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT 1;",
+            stdout: "1\n", stderr: "", exitCode: 0,
+            startedAt: Date(), endedAt: Date()
+        )
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+
+        await viewModel.triggerPrompt("Preview this parquet file")
+        await viewModel.triggerPrompt("Count rows")
+        await viewModel.triggerPrompt("Show schema")
+
+        let history = viewModel.uniqueCommandHistory
+        XCTAssertEqual(history.count, 3)
+        // First command should be first in history
+        XCTAssertTrue(history[0].contains("LIMIT 25"))
+    }
+
     // MARK: - Complete source lifecycle test
 
     func testSourceFullLifecycle() {

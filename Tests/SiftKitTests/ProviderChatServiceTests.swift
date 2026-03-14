@@ -137,6 +137,16 @@ final class ProviderDiagnosticsEdgeCaseTests: XCTestCase {
         XCTAssertTrue(claude.environmentKeyPresent)
     }
 
+    func testOpenAIEnvironmentKey() {
+        let statuses = ProviderDiagnostics.detect(
+            environment: ["OPENAI_API_KEY": "sk-test", "PATH": ""],
+            secretStore: MemorySecretStore(),
+            executableExists: { _ in false }
+        )
+        let openai = statuses.first(where: { $0.provider == .openAI })!
+        XCTAssertTrue(openai.environmentKeyPresent)
+    }
+
     func testResolvesFirstMatchingCLIPath() {
         let statuses = ProviderDiagnostics.detect(
             environment: ["PATH": "/first:/second"],
