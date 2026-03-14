@@ -1890,6 +1890,44 @@ final class DataSourceValidationTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB sample [tablename]
+
+final class DuckDBSampleTableTests: XCTestCase {
+    func testSampleTradesGeneratesSampleQuery() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "sample trades", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("USING SAMPLE"))
+        XCTAssertTrue(plan.sql.contains("FROM trades"))
+    }
+
+    func testRandomOrdersGeneratesSampleQuery() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "random orders", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("USING SAMPLE"))
+        XCTAssertTrue(plan.sql.contains("FROM orders"))
+    }
+
+    func testExtractSampleTargetReturnsTableName() {
+        XCTAssertEqual(AssistantPlanner.extractSampleTarget(from: "sample trades"), "trades")
+        XCTAssertEqual(AssistantPlanner.extractSampleTarget(from: "random users"), "users")
+    }
+
+    func testExtractSampleTargetRejectsReserved() {
+        XCTAssertNil(AssistantPlanner.extractSampleTarget(from: "sample the"))
+        XCTAssertNil(AssistantPlanner.extractSampleTarget(from: "random rows"))
+    }
+}
+
 // MARK: - CommandRegistry count
 
 final class CommandRegistryCountTests: XCTestCase {

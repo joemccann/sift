@@ -661,6 +661,16 @@ public enum AssistantPlanner {
             )
         }
 
+        if let tableName = extractSampleTarget(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM \(tableName) USING SAMPLE 10;",
+                    explanation: "Randomly sampling 10 rows from \(tableName) in \(source.displayName)."
+                )
+            )
+        }
+
         if lowercased.contains("describe") || lowercased.contains("schema") {
             return .command(
                 DuckDBCommandPlan(
@@ -711,6 +721,31 @@ public enum AssistantPlanner {
             .first?
             .lowercased() ?? ""
         return keywords.contains(firstToken)
+    }
+
+    /// Extracts a table name from "sample [table]" or "random [table]"
+    static func extractSampleTarget(from lowercased: String) -> String? {
+        let patterns = [
+            "sample (\\w+)",
+            "random (\\w+)",
+            "random rows from (\\w+)",
+            "sample from (\\w+)",
+        ]
+        let reservedWords: Set<String> = [
+            "the", "this", "rows", "all", "my", "a", "it", "data", "sample", "from",
+        ]
+
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)),
+               let nameRange = Range(match.range(at: 1), in: lowercased) {
+                let name = String(lowercased[nameRange])
+                if !reservedWords.contains(name), name.count > 1 {
+                    return name
+                }
+            }
+        }
+        return nil
     }
 
     /// Extracts a table name from "count [table]" or "count rows in [table]"

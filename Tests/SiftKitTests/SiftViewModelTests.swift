@@ -1631,6 +1631,104 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
     }
 
+    // MARK: - Recent sources
+
+    func testRecentSourcesReturnsUpToLimit() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        for i in 0..<10 {
+            viewModel.importSource(url: URL(fileURLWithPath: "/tmp/file\(i).parquet"))
+        }
+
+        let recent3 = viewModel.recentSources(limit: 3)
+        XCTAssertEqual(recent3.count, 3)
+
+        let recent20 = viewModel.recentSources(limit: 20)
+        XCTAssertEqual(recent20.count, 10) // Only 10 exist
+    }
+
+    func testSessionDurationIsPositive() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Welcome"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertGreaterThanOrEqual(viewModel.sessionDuration, 0)
+    }
+
+    func testLastSuccessfulOutputNilBeforeExecution() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertNil(viewModel.lastSuccessfulOutput)
+    }
+
+    func testLastSuccessfulOutputAfterExecution() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "SELECT 42;"],
+            sql: "SELECT 42;",
+            stdout: "42\n",
+            stderr: "",
+            exitCode: 0,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/test.parquet"))
+        await viewModel.triggerPrompt("Preview this parquet file")
+
+        XCTAssertEqual(viewModel.lastSuccessfulOutput, "42\n")
+    }
+
+    func testLastSuccessfulOutputNilForFailedExecution() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "INVALID;"],
+            sql: "INVALID;",
+            stdout: "",
+            stderr: "error",
+            exitCode: 1,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/test.parquet"))
+        await viewModel.triggerPrompt("Preview this parquet file")
+
+        XCTAssertNil(viewModel.lastSuccessfulOutput)
+    }
+
     // MARK: - Source validation
 
     func testMissingSourcesDetectsNonexistentFiles() {

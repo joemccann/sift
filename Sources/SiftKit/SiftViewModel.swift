@@ -768,6 +768,23 @@ public final class SiftViewModel: ObservableObject {
         }
     }
 
+    /// Most recently used sources (up to N)
+    public func recentSources(limit: Int = 5) -> [DataSource] {
+        Array(sortedSourcesByDate.prefix(limit))
+    }
+
+    /// Duration of the current session (from first transcript item to now)
+    public var sessionDuration: TimeInterval {
+        guard let firstTimestamp = transcript.first?.timestamp else { return 0 }
+        return Date().timeIntervalSince(firstTimestamp)
+    }
+
+    /// Last successful execution output (if any)
+    public var lastSuccessfulOutput: String? {
+        guard let lastExecution, lastExecution.exitCode == 0 else { return nil }
+        return lastExecution.stdout.isEmpty ? nil : lastExecution.stdout
+    }
+
     /// Brief summary of the transcript
     public var transcriptSummary: String {
         let userCount = userMessageCount
