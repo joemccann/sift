@@ -1367,6 +1367,71 @@ final class TranscriptRoleTests: XCTestCase {
         XCTAssertEqual(TranscriptRole.user.rawValue, "user")
         XCTAssertEqual(TranscriptRole.system.rawValue, "system")
     }
+
+    func testTranscriptRoleCodableRoundTrip() throws {
+        for role in [TranscriptRole.assistant, .user, .system] {
+            let data = try JSONEncoder().encode(role)
+            let restored = try JSONDecoder().decode(TranscriptRole.self, from: data)
+            XCTAssertEqual(restored, role)
+        }
+    }
+}
+
+// MARK: - DuckDBCommandPlan
+
+final class DuckDBCommandPlanTests: XCTestCase {
+    func testCommandPlanEquality() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/test.duckdb"), kind: .duckdb)
+        let a = DuckDBCommandPlan(source: source, sql: "SELECT 1;", explanation: "test")
+        let b = DuckDBCommandPlan(source: source, sql: "SELECT 1;", explanation: "test")
+        XCTAssertEqual(a, b)
+    }
+
+    func testCommandPlanInequality() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/test.duckdb"), kind: .duckdb)
+        let a = DuckDBCommandPlan(source: source, sql: "SELECT 1;", explanation: "test")
+        let b = DuckDBCommandPlan(source: source, sql: "SELECT 2;", explanation: "test")
+        XCTAssertNotEqual(a, b)
+    }
+}
+
+// MARK: - MetalExecutionState
+
+final class MetalExecutionStateTests: XCTestCase {
+    func testExecutionStateRawValues() {
+        XCTAssertEqual(MetalExecutionState.idle.rawValue, "idle")
+        XCTAssertEqual(MetalExecutionState.success.rawValue, "success")
+        XCTAssertEqual(MetalExecutionState.failure.rawValue, "failure")
+    }
+
+    func testMetalWorkspaceDestinationRawValues() {
+        XCTAssertEqual(MetalWorkspaceDestination.assistant.rawValue, "assistant")
+        XCTAssertEqual(MetalWorkspaceDestination.transcripts.rawValue, "transcripts")
+        XCTAssertEqual(MetalWorkspaceDestination.setup.rawValue, "setup")
+        XCTAssertEqual(MetalWorkspaceDestination.settings.rawValue, "settings")
+    }
+}
+
+// MARK: - AppSettings bookmarks
+
+final class AppSettingsBookmarkTests: XCTestCase {
+    func testSettingsWithBookmarksCodableRoundTrip() throws {
+        var settings = AppSettings(hasCompletedSetup: true)
+        settings.bookmarks = [
+            BookmarkedCommand(sql: "SELECT 1;", sourceName: "test.duckdb"),
+            BookmarkedCommand(sql: "SHOW TABLES;", sourceName: "market.duckdb"),
+        ]
+
+        let data = try JSONEncoder().encode(settings)
+        let restored = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(restored.bookmarks.count, 2)
+        XCTAssertEqual(restored.bookmarks.first?.sql, "SELECT 1;")
+    }
+
+    func testEmptyBookmarksByDefault() {
+        let settings = AppSettings()
+        XCTAssertTrue(settings.bookmarks.isEmpty)
+    }
 }
 
 // MARK: - DuckDB EXPLAIN support
