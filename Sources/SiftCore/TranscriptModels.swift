@@ -113,6 +113,35 @@ public struct TranscriptItem: Identifiable, Equatable, Sendable, Codable {
     }
 }
 
+public enum TranscriptFilter {
+    /// Filter transcript items by date range
+    public static func items(in items: [TranscriptItem], from start: Date, to end: Date) -> [TranscriptItem] {
+        items.filter { $0.timestamp >= start && $0.timestamp <= end }
+    }
+
+    /// Get items from the last N seconds
+    public static func recentItems(in items: [TranscriptItem], seconds: TimeInterval) -> [TranscriptItem] {
+        let cutoff = Date().addingTimeInterval(-seconds)
+        return items.filter { $0.timestamp >= cutoff }
+    }
+
+    /// Get only error results
+    public static func errorResults(in items: [TranscriptItem]) -> [TranscriptItem] {
+        items.filter {
+            if case let .commandResult(exitCode, _, _) = $0.kind { return exitCode != 0 }
+            return false
+        }
+    }
+
+    /// Get only successful results
+    public static func successResults(in items: [TranscriptItem]) -> [TranscriptItem] {
+        items.filter {
+            if case let .commandResult(exitCode, _, _) = $0.kind { return exitCode == 0 }
+            return false
+        }
+    }
+}
+
 public enum TranscriptAnalytics {
     /// Total word count across all transcript items
     public static func wordCount(in items: [TranscriptItem]) -> Int {

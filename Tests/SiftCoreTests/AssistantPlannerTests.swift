@@ -2882,6 +2882,54 @@ final class DuckDBGroupByPatternTests: XCTestCase {
     }
 }
 
+// MARK: - TranscriptFilter
+
+final class TranscriptFilterTests: XCTestCase {
+    func testErrorResults() {
+        let items = [
+            TranscriptItem(role: .assistant, title: "R", body: "ok", kind: .commandResult(exitCode: 0, stdout: "ok", stderr: "")),
+            TranscriptItem(role: .assistant, title: "R", body: "err", kind: .commandResult(exitCode: 1, stdout: "", stderr: "error")),
+            TranscriptItem(role: .user, title: "You", body: "Q"),
+        ]
+        XCTAssertEqual(TranscriptFilter.errorResults(in: items).count, 1)
+    }
+
+    func testSuccessResults() {
+        let items = [
+            TranscriptItem(role: .assistant, title: "R", body: "ok", kind: .commandResult(exitCode: 0, stdout: "ok", stderr: "")),
+            TranscriptItem(role: .assistant, title: "R", body: "err", kind: .commandResult(exitCode: 1, stdout: "", stderr: "error")),
+        ]
+        XCTAssertEqual(TranscriptFilter.successResults(in: items).count, 1)
+    }
+
+    func testItemsByDateRange() {
+        let now = Date()
+        let items = [
+            TranscriptItem(role: .user, title: "A", body: "old", timestamp: now.addingTimeInterval(-3600)),
+            TranscriptItem(role: .user, title: "B", body: "recent", timestamp: now.addingTimeInterval(-60)),
+            TranscriptItem(role: .user, title: "C", body: "new", timestamp: now),
+        ]
+        let filtered = TranscriptFilter.items(in: items, from: now.addingTimeInterval(-120), to: now)
+        XCTAssertEqual(filtered.count, 2) // recent + new
+    }
+
+    func testRecentItemsWithinWindow() {
+        let now = Date()
+        let items = [
+            TranscriptItem(role: .user, title: "A", body: "old", timestamp: now.addingTimeInterval(-3600)),
+            TranscriptItem(role: .user, title: "B", body: "new", timestamp: now),
+        ]
+        let recent = TranscriptFilter.recentItems(in: items, seconds: 600)
+        XCTAssertEqual(recent.count, 1)
+        XCTAssertEqual(recent.first?.body, "new")
+    }
+
+    func testEmptyResults() {
+        XCTAssertTrue(TranscriptFilter.errorResults(in: []).isEmpty)
+        XCTAssertTrue(TranscriptFilter.successResults(in: []).isEmpty)
+    }
+}
+
 // MARK: - DuckDB output parser edge cases
 
 final class DuckDBOutputParserEdgeCaseTests: XCTestCase {
