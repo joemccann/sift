@@ -961,3 +961,26 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(viewModel.metalSnapshot.transcriptCount, 1)
     }
 }
+
+// MARK: - SidebarDestination
+
+@MainActor
+final class SidebarDestinationTests: XCTestCase {
+    func testAllCasesExist() {
+        let cases = SidebarDestination.allCases
+        XCTAssertTrue(cases.contains(.assistant))
+        XCTAssertTrue(cases.contains(.transcripts))
+        XCTAssertTrue(cases.contains(.setup))
+        XCTAssertTrue(cases.contains(.settings))
+        XCTAssertEqual(cases.count, 4)
+    }
+
+    func testRawValues() {
+        XCTAssertEqual(SidebarDestination.assistant.rawValue, "Assistant")
+        XCTAssertEqual(SidebarDestination.settings.rawValue, "Settings")
+    }
+
+    func testIdentifiable() {
+        XCTAssertEqual(SidebarDestination.assistant.id, "Assistant")
+    }
+}

@@ -236,6 +236,16 @@ public enum AssistantPlanner {
             )
         }
 
+        if lowercased.contains("random") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM read_parquet('\(escapedPath)') USING SAMPLE 10;",
+                    explanation: "Randomly sampling 10 rows from \(source.displayName)."
+                )
+            )
+        }
+
         if lowercased.contains("preview") || lowercased.contains("show") || lowercased.contains("head") || lowercased.contains("first") || lowercased.contains("sample") {
             return .command(
                 DuckDBCommandPlan(
@@ -304,6 +314,16 @@ public enum AssistantPlanner {
             )
         }
 
+        if lowercased.contains("random") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM read_csv('\(escapedPath)') USING SAMPLE 10;",
+                    explanation: "Randomly sampling 10 rows from \(source.displayName)."
+                )
+            )
+        }
+
         if lowercased.contains("preview") || lowercased.contains("show") || lowercased.contains("head") || lowercased.contains("first") || lowercased.contains("sample") {
             return .command(
                 DuckDBCommandPlan(
@@ -367,6 +387,16 @@ public enum AssistantPlanner {
                     source: source,
                     sql: "SELECT * FROM read_json('\(escapedPath)') LIMIT \(limit);",
                     explanation: "Showing top \(limit) rows from \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("random") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM read_json('\(escapedPath)') USING SAMPLE 10;",
+                    explanation: "Randomly sampling 10 rows from \(source.displayName)."
                 )
             )
         }
@@ -467,6 +497,16 @@ public enum AssistantPlanner {
             )
         }
 
+        if let tableName = extractDescribeTarget(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "DESCRIBE \(tableName);",
+                    explanation: "Describing the \(tableName) table in \(source.displayName)."
+                )
+            )
+        }
+
         if lowercased.contains("describe") || lowercased.contains("schema") {
             return .command(
                 DuckDBCommandPlan(
@@ -517,6 +557,29 @@ public enum AssistantPlanner {
             .first?
             .lowercased() ?? ""
         return keywords.contains(firstToken)
+    }
+
+    /// Extracts a table name from "describe [table]" or "describe the [table] table"
+    static func extractDescribeTarget(from lowercased: String) -> String? {
+        // Match "describe <tablename>" but not bare "describe" or "describe schema"
+        let patterns = [
+            "describe the (\\w+) table",
+            "describe table (\\w+)",
+            "describe (\\w+)",
+        ]
+        let reservedWords: Set<String> = ["the", "this", "schema", "database", "all", "it", "my", "a"]
+
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)),
+               let nameRange = Range(match.range(at: 1), in: lowercased) {
+                let name = String(lowercased[nameRange])
+                if !reservedWords.contains(name) {
+                    return name
+                }
+            }
+        }
+        return nil
     }
 
     private static func parseRerun(from trimmed: String) -> AssistantAction? {

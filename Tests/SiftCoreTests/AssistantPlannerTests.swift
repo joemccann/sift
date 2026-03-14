@@ -864,3 +864,93 @@ final class MetalWorkspaceSnapshotTests: XCTestCase {
         XCTAssertEqual(a, b)
     }
 }
+
+// MARK: - Describe table pattern
+
+final class DescribeTableTests: XCTestCase {
+    func testDescribeTradesExtractsTableName() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "describe trades", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertEqual(plan.sql, "DESCRIBE trades;")
+    }
+
+    func testDescribeTheUsersTable() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "describe the users table", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertEqual(plan.sql, "DESCRIBE users;")
+    }
+
+    func testBareDescribeFallsToGenericDescribe() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "describe the schema", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertEqual(plan.sql, "DESCRIBE;")
+    }
+
+    func testExtractDescribeTargetRejectsReservedWords() {
+        XCTAssertNil(AssistantPlanner.extractDescribeTarget(from: "describe the database"))
+        XCTAssertNil(AssistantPlanner.extractDescribeTarget(from: "describe this"))
+        XCTAssertNil(AssistantPlanner.extractDescribeTarget(from: "describe all"))
+    }
+
+    func testExtractDescribeTargetReturnsTableName() {
+        XCTAssertEqual(AssistantPlanner.extractDescribeTarget(from: "describe orders"), "orders")
+        XCTAssertEqual(AssistantPlanner.extractDescribeTarget(from: "describe table products"), "products")
+    }
+}
+
+// MARK: - Random sampling
+
+final class RandomSamplingTests: XCTestCase {
+    func testParquetRandomSampleUsesUsingSample() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "show me a random sample", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("USING SAMPLE"))
+        XCTAssertTrue(plan.sql.contains("read_parquet"))
+    }
+
+    func testCSVRandomSampleUsesUsingSample() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv)
+        let action = AssistantPlanner.plan(prompt: "random rows", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("USING SAMPLE"))
+        XCTAssertTrue(plan.sql.contains("read_csv"))
+    }
+
+    func testJSONRandomSampleUsesUsingSample() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let action = AssistantPlanner.plan(prompt: "random sample", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("USING SAMPLE"))
+        XCTAssertTrue(plan.sql.contains("read_json"))
+    }
+}
+
+
