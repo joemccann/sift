@@ -22,6 +22,7 @@ public enum AssistantAction: Equatable, Sendable {
     case listSources
     case copyLastResult
     case rerunCommand(index: Int?)
+    case showHistory
 }
 
 public enum PromptLibrary {
@@ -83,6 +84,10 @@ public enum AssistantPlanner {
             return .listSources
         }
 
+        if trimmed.caseInsensitiveCompare("/history") == .orderedSame {
+            return .showHistory
+        }
+
         if trimmed.caseInsensitiveCompare("What can you do?") == .orderedSame || trimmed.caseInsensitiveCompare("/help") == .orderedSame {
             return .assistantReply(
                 """
@@ -93,6 +98,7 @@ public enum AssistantPlanner {
                 • `/duckdb <args>` — Run raw DuckDB CLI arguments
                 • `/copy` — Copy the last query result to the clipboard
                 • `/rerun` — Re-execute the last command (or `/rerun 2` for the 2nd-to-last)
+                • `/history` — Show recent commands
                 • `/clear` — Clear the conversation transcript
                 • `/sources` — List all attached data sources
                 • `/help` — Show this help message
@@ -116,6 +122,10 @@ public enum AssistantPlanner {
 
         if let rerunAction = parseRerun(from: trimmed) {
             return rerunAction
+        }
+
+        if trimmed.caseInsensitiveCompare("/sql") == .orderedSame {
+            return .assistantReply("Use `/sql <query>` to run raw SQL against the active source. Example: `/sql SELECT * FROM my_table LIMIT 10;`")
         }
 
         if trimmed.caseInsensitiveCompare("/duckdb") == .orderedSame {
@@ -401,6 +411,36 @@ public enum AssistantPlanner {
                     source: source,
                     sql: "SELECT table_name, estimated_size, column_count, index_count FROM duckdb_tables();",
                     explanation: "Showing table sizes and metadata for \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("show views") || lowercased.contains("list views") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT view_name FROM duckdb_views() WHERE NOT internal;",
+                    explanation: "Listing views in \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("show indexes") || lowercased.contains("list indexes") || lowercased.contains("show indices") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT table_name, index_name, is_unique FROM duckdb_indexes();",
+                    explanation: "Listing indexes in \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("version") && !looksLikeSQL(prompt) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "PRAGMA version;",
+                    explanation: "Checking DuckDB version for \(source.displayName)."
                 )
             )
         }

@@ -642,6 +642,203 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.searchResults.count, 1)
     }
 
+    func testHistoryWithNoCommandsShowsGuidance() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/history"
+        await viewModel.sendPrompt()
+
+        let lastItem = viewModel.transcript.last
+        XCTAssertEqual(lastItem?.title, "History")
+        XCTAssertTrue(lastItem?.body.contains("No commands") == true)
+    }
+
+    func testHistoryShowsCommandsAfterExecution() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "SELECT 42;"],
+            sql: "SELECT 42;",
+            stdout: "42\n",
+            stderr: "",
+            exitCode: 0,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+        await viewModel.triggerPrompt("Preview this parquet file")
+
+        viewModel.composerText = "/history"
+        await viewModel.sendPrompt()
+
+        let historyItems = viewModel.transcript.filter { $0.title == "History" }
+        XCTAssertFalse(historyItems.isEmpty)
+        XCTAssertTrue(historyItems.last?.body.contains("Recent Commands") == true)
+    }
+
+    func testImportDuplicateSourceDoesNotAdd() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+
+        // Should still have only one source (no duplicates)
+        XCTAssertEqual(viewModel.sources.count, 1)
+    }
+
+    func testUpdateDefaultProviderUpdatesSettings() {
+        let sessionStore = MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: []))
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: sessionStore,
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.updateDefaultProvider(.gemini)
+        XCTAssertEqual(viewModel.selectedProvider, .gemini)
+        XCTAssertEqual(sessionStore.lastSaved?.settings.defaultProvider, .gemini)
+    }
+
+    func testUpdateAuthModeUpdatesSettings() {
+        let sessionStore = MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: []))
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: sessionStore,
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.updateAuthMode(.apiKey, for: .claude)
+        let pref = viewModel.preference(for: .claude)
+        XCTAssertEqual(pref.authMode, .apiKey)
+    }
+
+    func testUpdateCustomModelUpdatesSettings() {
+        let sessionStore = MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: []))
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: sessionStore,
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.updateCustomModel("opus", for: .claude)
+        let pref = viewModel.preference(for: .claude)
+        XCTAssertEqual(pref.customModel, "opus")
+    }
+
+    func testSaveAndRemoveAPIKey() {
+        let secretStore = MemorySecretStore()
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: secretStore,
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.saveAPIKey("test-key-123", for: .claude)
+        XCTAssertTrue(viewModel.hasStoredAPIKey(for: .claude))
+
+        viewModel.removeAPIKey(for: .claude)
+        XCTAssertFalse(viewModel.hasStoredAPIKey(for: .claude))
+    }
+
+    func testSaveEmptyAPIKeyIsIgnored() {
+        let secretStore = MemorySecretStore()
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: secretStore,
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.saveAPIKey("  ", for: .claude)
+        XCTAssertFalse(viewModel.hasStoredAPIKey(for: .claude))
+    }
+
+    func testClearConversationResetsTranscript() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .user, title: "You", body: "some text"),
+                TranscriptItem(role: .assistant, title: "A", body: "reply"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.clearConversation()
+
+        XCTAssertEqual(viewModel.transcript.count, 1)
+        XCTAssertNil(viewModel.lastExecution)
+    }
+
+    func testReopenSetupNavigatesToSetup() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.reopenSetup()
+
+        XCTAssertTrue(viewModel.isSetupFlowPresented)
+        XCTAssertEqual(viewModel.selectedDestination, .setup)
+    }
+
+    func testMetalSnapshotIsRunningState() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "SELECT 1;"],
+            sql: "SELECT 1;",
+            stdout: "1\n",
+            stderr: "",
+            exitCode: 0,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // Before any execution
+        XCTAssertFalse(viewModel.metalSnapshot.isRunning)
+        XCTAssertEqual(viewModel.metalSnapshot.executionState, .idle)
+    }
+
     func testSearchTranscriptNoMatchReturnsEmpty() {
         let viewModel = SiftViewModel(
             executor: nil,

@@ -462,4 +462,128 @@ final class AssistantPlannerTests: XCTestCase {
         let source = DataSource.from(url: URL(fileURLWithPath: "/tmp/data.txt"))
         XCTAssertNil(source)
     }
+
+    // MARK: - /history command
+
+    func testHistoryCommandReturnsShowHistory() {
+        let action = AssistantPlanner.plan(prompt: "/history", source: nil)
+        XCTAssertEqual(action, .showHistory)
+    }
+
+    func testHelpIncludesHistory() {
+        let action = AssistantPlanner.plan(prompt: "/help", source: nil)
+        guard case let .assistantReply(reply) = action else {
+            return XCTFail("Expected assistant reply")
+        }
+        XCTAssertTrue(reply.contains("/history"))
+    }
+
+    // MARK: - /sql with no args
+
+    func testSqlWithNoArgsReturnsGuidance() {
+        let action = AssistantPlanner.plan(prompt: "/sql", source: nil)
+        guard case let .assistantReply(reply) = action else {
+            return XCTFail("Expected assistant reply")
+        }
+        XCTAssertTrue(reply.contains("/sql"))
+    }
+
+    // MARK: - DuckDB show views
+
+    func testDuckDBShowViewsUsesViewsQuery() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "Show views", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("duckdb_views()"))
+    }
+
+    // MARK: - DuckDB show indexes
+
+    func testDuckDBShowIndexesUsesIndexesQuery() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "Show indexes", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("duckdb_indexes()"))
+    }
+
+    // MARK: - DuckDB version
+
+    func testDuckDBVersionUsesPragma() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "What version?", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertEqual(plan.sql, "PRAGMA version;")
+    }
+
+    // MARK: - Path escaping
+
+    func testPathWithApostropheIsEscaped() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/John's Data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "Preview this", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("John''s Data.parquet"))
+        XCTAssertFalse(plan.sql.contains("John's Data.parquet"))
+    }
+
+    // MARK: - Empty prompt
+
+    func testEmptyPromptReturnsGuidance() {
+        let action = AssistantPlanner.plan(prompt: "", source: nil)
+        guard case let .assistantReply(reply) = action else {
+            return XCTFail("Expected assistant reply")
+        }
+        XCTAssertTrue(reply.contains("Ask a question"))
+    }
+
+    func testWhitespaceOnlyPromptReturnsGuidance() {
+        let action = AssistantPlanner.plan(prompt: "   \n  ", source: nil)
+        guard case let .assistantReply(reply) = action else {
+            return XCTFail("Expected assistant reply")
+        }
+        XCTAssertTrue(reply.contains("Ask a question"))
+    }
+
+    // MARK: - DB extension
+
+    func testDBFileCreatesDuckDBSource() {
+        let source = DataSource.from(url: URL(fileURLWithPath: "/tmp/market.db"))
+        XCTAssertNotNil(source)
+        XCTAssertEqual(source?.kind, .duckdb)
+    }
+
+    // MARK: - Case insensitive extension
+
+    func testParquetUppercaseExtension() {
+        let source = DataSource.from(url: URL(fileURLWithPath: "/tmp/DATA.PARQUET"))
+        XCTAssertNotNil(source)
+        XCTAssertEqual(source?.kind, .parquet)
+    }
+
+    func testCSVUppercaseExtension() {
+        let source = DataSource.from(url: URL(fileURLWithPath: "/tmp/DATA.CSV"))
+        XCTAssertNotNil(source)
+        XCTAssertEqual(source?.kind, .csv)
+    }
+
+    func testJSONUppercaseExtension() {
+        let source = DataSource.from(url: URL(fileURLWithPath: "/tmp/DATA.JSON"))
+        XCTAssertNotNil(source)
+        XCTAssertEqual(source?.kind, .json)
+    }
 }

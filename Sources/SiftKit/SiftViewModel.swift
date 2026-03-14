@@ -169,10 +169,12 @@ public final class SiftViewModel: ObservableObject {
             return
         }
 
-        if !sources.contains(source) {
+        if let existing = sources.first(where: { $0.url == source.url }) {
+            selectedSource = existing
+        } else {
             sources.insert(source, at: 0)
+            selectedSource = source
         }
-        selectedSource = source
         selectedDestination = .assistant
 
         appendTranscript(
@@ -352,6 +354,32 @@ public final class SiftViewModel: ObservableObject {
         case .copyLastResult:
             removeThinkingItem(thinkingItem.id)
             copyLastResultToClipboard()
+
+        case .showHistory:
+            let commands = transcript.compactMap { item -> String? in
+                switch item.kind {
+                case let .commandPreview(sql, sourceName):
+                    return "• `\(sql)` → \(sourceName)"
+                case let .rawCommandPreview(command):
+                    return "• `/duckdb \(command)`"
+                default:
+                    return nil
+                }
+            }
+            let historyText: String
+            if commands.isEmpty {
+                historyText = "No commands in history. Run a query first."
+            } else {
+                let recent = commands.suffix(10)
+                historyText = "**Recent Commands** (\(commands.count) total)\n\n" + recent.joined(separator: "\n")
+            }
+            replaceThinkingItem(thinkingItem.id, with:
+                TranscriptItem(
+                    role: .assistant,
+                    title: "History",
+                    body: historyText
+                )
+            )
 
         case let .rerunCommand(index):
             removeThinkingItem(thinkingItem.id)
