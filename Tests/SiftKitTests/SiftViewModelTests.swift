@@ -1553,6 +1553,84 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.hasStoredAPIKey(for: .claude))
     }
 
+    func testSendPromptWithExecutorNilShowsDuckDBUnavailable() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+
+        await viewModel.triggerPrompt("Preview this parquet file")
+
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
+    }
+
+    func testRunRawDuckDBWithExecutorNilShowsUnavailable() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/duckdb --version"
+        await viewModel.sendPrompt()
+
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
+    }
+
+    func testProviderErrorAppendsToTranscript() async {
+        struct FailingResponder: ProviderResponding {
+            func respond(prompt: String, source: DataSource?, transcript: [TranscriptItem], settings: AppSettings, providerStatuses: [ProviderStatus]) async throws -> ProviderChatResponse {
+                throw ProviderChatError.processFailure("Connection timed out")
+            }
+            func generateSQL(prompt: String, source: DataSource, transcript: [TranscriptItem], settings: AppSettings, providerStatuses: [ProviderStatus]) async throws -> ProviderSQLResponse {
+                throw ProviderChatError.processFailure("Connection timed out")
+            }
+        }
+
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: FailingResponder(),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "Explain something complex"
+        await viewModel.sendPrompt()
+
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "Provider Error" }))
+    }
+
+    func testNLQueryWithExecutorNilShowsUnavailable() async {
+        let sqlResponse = ProviderSQLResponse(
+            provider: .claude,
+            sql: "SELECT * FROM trades;",
+            explanation: "Fetching trades."
+        )
+
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(
+                response: .init(provider: .claude, text: "ignored"),
+                sqlResponse: sqlResponse
+            ),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"))
+
+        await viewModel.triggerPrompt("show me the trades")
+
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
+    }
+
     func testInitialTranscriptHasWelcomeMessage() {
         let items = SiftViewModel.initialTranscript
         XCTAssertEqual(items.count, 1)
