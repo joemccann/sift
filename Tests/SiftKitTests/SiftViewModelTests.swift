@@ -1182,6 +1182,48 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.transcript.count, countBefore)
     }
 
+    func testUndoRemovesLastUserMessageAndResponses() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "Some response")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Welcome"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // Send a message that will get a provider response
+        viewModel.composerText = "Tell me something"
+        await viewModel.sendPrompt()
+
+        let countBeforeUndo = viewModel.transcript.count
+        XCTAssertTrue(countBeforeUndo >= 3) // Welcome + user message + response
+
+        viewModel.composerText = "/undo"
+        await viewModel.sendPrompt()
+
+        // Should have removed the user message and response, and added "Undone" message
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "Undone" }))
+    }
+
+    func testUndoWithNoUserMessagesShowsGuidance() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Welcome"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/undo"
+        await viewModel.sendPrompt()
+
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "Nothing to Undo" }))
+    }
+
     func testBookmarkWithNoCommandsShowsGuidance() async {
         let viewModel = SiftViewModel(
             executor: nil,

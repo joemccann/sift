@@ -1236,6 +1236,37 @@ final class DuckDBExplainTests: XCTestCase {
     }
 }
 
+// MARK: - /undo command
+
+final class UndoCommandTests: XCTestCase {
+    func testUndoCommandReturnsUndoLastMessage() {
+        let action = AssistantPlanner.plan(prompt: "/undo", source: nil)
+        XCTAssertEqual(action, .undoLastMessage)
+    }
+}
+
+// MARK: - ProviderPreference defaults
+
+final class ProviderPreferenceTests: XCTestCase {
+    func testDefaultForClaudeUsesSonnet() {
+        let pref = ProviderPreference.default(for: .claude)
+        XCTAssertEqual(pref.authMode, .localCLI)
+        XCTAssertEqual(pref.customModel, "sonnet")
+    }
+
+    func testDefaultForOpenAIUsesEmptyModel() {
+        let pref = ProviderPreference.default(for: .openAI)
+        XCTAssertEqual(pref.authMode, .localCLI)
+        XCTAssertEqual(pref.customModel, "")
+    }
+
+    func testDefaultPreferenceInit() {
+        let pref = ProviderPreference()
+        XCTAssertEqual(pref.authMode, .localCLI)
+        XCTAssertEqual(pref.customModel, "")
+    }
+}
+
 // MARK: - ProviderKind properties
 
 final class ProviderKindExtendedTests: XCTestCase {

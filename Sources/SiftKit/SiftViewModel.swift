@@ -383,6 +383,10 @@ public final class SiftViewModel: ObservableObject {
             removeThinkingItem(thinkingItem.id)
             exportTranscriptToClipboard()
 
+        case .undoLastMessage:
+            removeThinkingItem(thinkingItem.id)
+            undoLastUserMessage()
+
         case .bookmarkLastCommand:
             removeThinkingItem(thinkingItem.id)
             bookmarkLastCommand()
@@ -684,6 +688,40 @@ public final class SiftViewModel: ObservableObject {
                 )
             )
         }
+    }
+
+    public func undoLastUserMessage() {
+        // Find and remove the last user message plus the /undo message itself
+        // We already removed the thinking item, and the /undo user message was appended
+        // Remove the /undo user message first
+        if let undoIndex = transcript.lastIndex(where: { $0.role == .user && $0.body == "/undo" }) {
+            transcript.remove(at: undoIndex)
+        }
+
+        // Now find and remove the previous user message and its response(s)
+        guard let lastUserIndex = transcript.lastIndex(where: { $0.role == .user }) else {
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Nothing to Undo",
+                    body: "No user messages found to remove."
+                )
+            )
+            return
+        }
+
+        // Remove from the last user message to the end
+        let removedCount = transcript.count - lastUserIndex
+        transcript.removeSubrange(lastUserIndex...)
+        persistSnapshot()
+
+        appendTranscript(
+            TranscriptItem(
+                role: .system,
+                title: "Undone",
+                body: "Removed \(removedCount) message\(removedCount == 1 ? "" : "s") from the transcript."
+            )
+        )
     }
 
     public func bookmarkLastCommand() {
