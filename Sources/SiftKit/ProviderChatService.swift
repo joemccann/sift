@@ -188,7 +188,7 @@ public final class ProviderChatService: ProviderResponding, @unchecked Sendable 
             Recent transcript:
             \(transcriptTail)
 
-            IMPORTANT: When the user asks a question that can be answered with data, you MUST write a DuckDB SQL query inside a ```sql fenced code block. Sift will automatically execute the first ```sql block against the selected source and show the results. Do NOT tell the user to run it themselves — Sift runs it for you. Keep your explanation brief and put the query in a ```sql block.
+            IMPORTANT: When the user asks a question that can be answered with data, respond ONLY with a DuckDB SQL query inside a ```sql fenced code block. No explanation needed — Sift will automatically execute it and show the results. Use the exact table and column names from the schema provided. If no schema is provided, use SHOW TABLES; first. For DuckDB sources, query tables directly (not the filename). For parquet sources, use read_parquet('path').
 
             User prompt:
             \(prompt)

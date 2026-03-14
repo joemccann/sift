@@ -167,11 +167,11 @@ final class SiftViewModelTests: XCTestCase {
 
         await viewModel.sendPrompt()
 
-        // Should have: user message, provider response, command preview, query result
+        // Should have: user message + result only (no provider text, no SQL preview)
         let titles = viewModel.transcript.map(\.title)
-        XCTAssertTrue(titles.contains("Claude"), "Should have provider response")
-        XCTAssertTrue(titles.contains("Running Query"), "Should have auto-execution preview")
-        XCTAssertTrue(titles.contains("Query Result"), "Should have query result")
+        XCTAssertFalse(titles.contains("Claude"), "Provider response should be hidden when SQL auto-executes")
+        XCTAssertFalse(titles.contains("Running Query"), "SQL preview should be hidden")
+        XCTAssertTrue(titles.contains("Result"), "Should show query result directly")
         XCTAssertEqual(viewModel.lastExecution?.stdout, "name\nmarket\nprices\n")
     }
 

@@ -35,6 +35,7 @@ public final class SiftViewModel: ObservableObject {
     @Published public var isSetupFlowPresented = false
     @Published public private(set) var isRunning = false
 
+    private var cachedSchema: [URL: String] = [:]
     private let executor: (any CommandExecuting)?
     private let chatResponder: any ProviderResponding
     private let sessionStore: any AppSessionPersisting
@@ -437,71 +438,82 @@ public final class SiftViewModel: ObservableObject {
         isRunning = true
         defer { isRunning = false }
 
+        // Discover schema so the provider knows exact table/column names.
+        var enrichedPrompt = prompt
+        if let source = selectedSource,
+           let schema = await schemaForSource(source) {
+            enrichedPrompt = "[Schema]\n\(schema)\n[End Schema]\n\n\(prompt)"
+        }
+
         do {
             let response = try await chatResponder.respond(
-                prompt: prompt,
+                prompt: enrichedPrompt,
                 source: selectedSource,
                 transcript: transcript,
                 settings: settings,
                 providerStatuses: providerStatuses
             )
-            appendTranscript(
-                TranscriptItem(
-                    role: .assistant,
-                    title: response.provider.displayName,
-                    body: response.text
-                )
-            )
 
-            // Auto-execute SQL from the provider response.
+            // If the response contains SQL, execute it silently and show only results.
             if let sql = SQLExtractor.extractFirst(from: response.text),
                let source = selectedSource,
                let executor {
-                let plan = DuckDBCommandPlan(source: source, sql: sql, explanation: "Auto-executed from provider response")
-                await autoExecuteSQL(plan: plan, providerName: response.provider.displayName)
+                let plan = DuckDBCommandPlan(source: source, sql: sql, explanation: "")
+                do {
+                    let result = try await executor.execute(plan: plan)
+                    lastExecution = result
+                    if result.exitCode == 0 {
+                        appendTranscript(
+                            TranscriptItem(
+                                role: .assistant,
+                                title: "Result",
+                                body: "",
+                                kind: .commandResult(
+                                    exitCode: result.exitCode,
+                                    stdout: result.stdout,
+                                    stderr: result.stderr
+                                )
+                            )
+                        )
+                    } else {
+                        // Query failed — show the error and the provider's explanation.
+                        appendTranscript(
+                            TranscriptItem(
+                                role: .assistant,
+                                title: "Query Error",
+                                body: response.text,
+                                kind: .commandResult(
+                                    exitCode: result.exitCode,
+                                    stdout: result.stdout,
+                                    stderr: result.stderr
+                                )
+                            )
+                        )
+                    }
+                } catch {
+                    appendTranscript(
+                        TranscriptItem(
+                            role: .system,
+                            title: "Execution Failed",
+                            body: error.localizedDescription
+                        )
+                    )
+                }
+            } else {
+                // No SQL in response — show the provider's text reply.
+                appendTranscript(
+                    TranscriptItem(
+                        role: .assistant,
+                        title: response.provider.displayName,
+                        body: response.text
+                    )
+                )
             }
         } catch {
             appendTranscript(
                 TranscriptItem(
                     role: .system,
                     title: "Provider Error",
-                    body: error.localizedDescription
-                )
-            )
-        }
-    }
-
-    private func autoExecuteSQL(plan: DuckDBCommandPlan, providerName: String) async {
-        appendTranscript(
-            TranscriptItem(
-                role: .assistant,
-                title: "Running Query",
-                body: "Executing SQL against `\(plan.source.displayName)`…",
-                kind: .commandPreview(sql: plan.sql, sourceName: plan.source.displayName)
-            )
-        )
-
-        do {
-            let result = try await executor!.execute(plan: plan)
-            lastExecution = result
-            isDiagnosticsDrawerPresented = true
-            appendTranscript(
-                TranscriptItem(
-                    role: .assistant,
-                    title: result.exitCode == 0 ? "Query Result" : "Query Error",
-                    body: result.exitCode == 0 ? "Query completed successfully." : "DuckDB returned an error.",
-                    kind: .commandResult(
-                        exitCode: result.exitCode,
-                        stdout: result.stdout,
-                        stderr: result.stderr
-                    )
-                )
-            )
-        } catch {
-            appendTranscript(
-                TranscriptItem(
-                    role: .system,
-                    title: "Execution Failed",
                     body: error.localizedDescription
                 )
             )
@@ -562,6 +574,57 @@ public final class SiftViewModel: ObservableObject {
                 )
             )
         }
+    }
+
+    private func discoverSchema(for source: DataSource) async -> String? {
+        guard let executor else { return nil }
+
+        let sql: String
+        switch source.kind {
+        case .duckdb:
+            sql = "SHOW TABLES;"
+        case .parquet:
+            let escaped = source.path.replacingOccurrences(of: "'", with: "''")
+            sql = "DESCRIBE SELECT * FROM read_parquet('\(escaped)');"
+        }
+
+        let plan = DuckDBCommandPlan(source: source, sql: sql, explanation: "Schema discovery")
+        guard let result = try? await executor.execute(plan: plan),
+              result.exitCode == 0, !result.stdout.isEmpty else {
+            return nil
+        }
+
+        if source.kind == .duckdb {
+            // For DuckDB: get table list, then describe each table
+            let tables = result.stdout
+                .split(separator: "\n")
+                .dropFirst() // header
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+
+            var schema = "Tables: \(tables.joined(separator: ", "))\n"
+            for table in tables.prefix(10) {
+                let describePlan = DuckDBCommandPlan(source: source, sql: "DESCRIBE \(table);", explanation: "")
+                if let descResult = try? await executor.execute(plan: describePlan),
+                   descResult.exitCode == 0 {
+                    schema += "\n\(table) columns:\n\(descResult.stdout)"
+                }
+            }
+            return schema
+        } else {
+            return "Parquet schema:\n\(result.stdout)"
+        }
+    }
+
+    private func schemaForSource(_ source: DataSource) async -> String? {
+        if let cached = cachedSchema[source.url] {
+            return cached
+        }
+        let schema = await discoverSchema(for: source)
+        if let schema {
+            cachedSchema[source.url] = schema
+        }
+        return schema
     }
 
     private func persistSnapshot() {
