@@ -196,4 +196,44 @@ final class DuckDBAdapterTests: XCTestCase {
         XCTAssertNil(request.source)
         XCTAssertEqual(request.binaryPath, "/usr/bin/duckdb")
     }
+
+    // MARK: - Execution request equatable
+
+    func testExecutionRequestEquality() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/test.duckdb"), kind: .duckdb)
+        let a = DuckDBExecutionRequest(binaryPath: "/usr/bin/duckdb", arguments: ["-c", "SELECT 1;"], sql: "SELECT 1;", source: source)
+        let b = DuckDBExecutionRequest(binaryPath: "/usr/bin/duckdb", arguments: ["-c", "SELECT 1;"], sql: "SELECT 1;", source: source)
+        XCTAssertEqual(a, b)
+    }
+
+    func testExecutionResultEquality() {
+        let date = Date()
+        let a = DuckDBExecutionResult(binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT 1;", stdout: "1", stderr: "", exitCode: 0, startedAt: date, endedAt: date)
+        let b = DuckDBExecutionResult(binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT 1;", stdout: "1", stderr: "", exitCode: 0, startedAt: date, endedAt: date)
+        XCTAssertEqual(a, b)
+    }
+
+    func testCLIErrorDescriptionForBinaryNotFound() {
+        let error = DuckDBCLIError.binaryNotFound
+        XCTAssertNotNil(error.errorDescription)
+        XCTAssertTrue(error.errorDescription!.contains("duckdb"))
+    }
+
+    func testParserErrorDescriptions() {
+        XCTAssertNotNil(DuckDBRawArgumentParser.Error.unterminatedQuote.errorDescription)
+        XCTAssertNotNil(DuckDBRawArgumentParser.Error.danglingEscape.errorDescription)
+    }
+
+    func testBinaryLocatorWithMultiplePathSegments() {
+        let candidates = DuckDBBinaryLocator.candidatePaths(environment: [
+            "PATH": "/usr/bin:/usr/local/bin:/opt/homebrew/bin",
+        ])
+        // Should have at least 3 from PATH + 3 hardcoded (deduped)
+        XCTAssertGreaterThanOrEqual(candidates.count, 3)
+    }
+
+    func testRequestSQLFieldForRawCommand() {
+        let request = DuckDBCLIExecutor.request(forRawArguments: ["--version"], binaryPath: "/usr/bin/duckdb")
+        XCTAssertEqual(request.sql, "--version")
+    }
 }
