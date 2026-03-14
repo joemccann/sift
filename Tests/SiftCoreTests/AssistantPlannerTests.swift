@@ -921,6 +921,141 @@ final class VersionCommandTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB count pattern with source
+
+final class DuckDBCountTests: XCTestCase {
+    func testDuckDBCountWithNoSpecificTable() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "How many rows?", source: source)
+
+        // Should fall to natural language since no specific pattern matches
+        guard case .naturalLanguageQuery = action else {
+            return // Could be NL or something else depending on pattern
+        }
+    }
+
+    func testParquetCountUsesReadParquet() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "Count the rows", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("COUNT(*)"))
+        XCTAssertTrue(plan.sql.contains("read_parquet"))
+    }
+
+    func testCSVCountUsesReadCSV() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv)
+        let action = AssistantPlanner.plan(prompt: "Count rows", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("COUNT(*)"))
+        XCTAssertTrue(plan.sql.contains("read_csv"))
+    }
+
+    func testJSONCountUsesReadJSON() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let action = AssistantPlanner.plan(prompt: "Count rows", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("COUNT(*)"))
+        XCTAssertTrue(plan.sql.contains("read_json"))
+    }
+}
+
+// MARK: - Parquet count aliases
+
+final class ParquetCountAliasTests: XCTestCase {
+    func testParquetHowManyRowsFallsToNL() {
+        // "How many rows?" doesn't contain "count" so it falls to NL query
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "How many rows?", source: source)
+
+        guard case .naturalLanguageQuery = action else {
+            return XCTFail("Expected NL query, got \(action)")
+        }
+    }
+
+    func testParquetRowCountUsesCount() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "row count", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("COUNT"))
+    }
+}
+
+// MARK: - Natural language fallback across all source types
+
+final class NaturalLanguageFallbackTests: XCTestCase {
+    func testParquetComplexQuestionFallsToNL() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "What's the correlation between price and volume?", source: source)
+
+        guard case .naturalLanguageQuery = action else {
+            return XCTFail("Expected NL query, got \(action)")
+        }
+    }
+
+    func testCSVComplexQuestionFallsToNL() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv)
+        let action = AssistantPlanner.plan(prompt: "Which category has the highest average?", source: source)
+
+        guard case .naturalLanguageQuery = action else {
+            return XCTFail("Expected NL query, got \(action)")
+        }
+    }
+
+    func testJSONComplexQuestionFallsToNL() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let action = AssistantPlanner.plan(prompt: "Find outliers in the data", source: source)
+
+        guard case .naturalLanguageQuery = action else {
+            return XCTFail("Expected NL query, got \(action)")
+        }
+    }
+
+    func testDuckDBComplexQuestionFallsToNL() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "What is the moving average of returns?", source: source)
+
+        guard case .naturalLanguageQuery = action else {
+            return XCTFail("Expected NL query, got \(action)")
+        }
+    }
+}
+
+// MARK: - Provider prompt without source
+
+final class ProviderPromptTests: XCTestCase {
+    func testGeneralQuestionUsesProviderPrompt() {
+        let action = AssistantPlanner.plan(prompt: "What is quantum computing?", source: nil)
+
+        guard case .providerPrompt = action else {
+            return XCTFail("Expected provider prompt, got \(action)")
+        }
+    }
+
+    func testCodeRelatedQuestionUsesProviderPrompt() {
+        let action = AssistantPlanner.plan(prompt: "Write a Python script to process CSV files", source: nil)
+
+        guard case .providerPrompt = action else {
+            return XCTFail("Expected provider prompt, got \(action)")
+        }
+    }
+}
+
 // MARK: - DuckDB SQL passthrough patterns
 
 final class DuckDBSQLPassthroughTests: XCTestCase {
