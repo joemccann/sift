@@ -1631,6 +1631,49 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
     }
 
+    // MARK: - Pins command
+
+    func testPinsCommandWithNoPinsShowsGuidance() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/pins"
+        await viewModel.sendPrompt()
+
+        let pinItems = viewModel.transcript.filter { $0.title == "Pinned" }
+        XCTAssertFalse(pinItems.isEmpty)
+        XCTAssertTrue(pinItems.last?.body.contains("No pinned") == true)
+    }
+
+    func testPinsCommandWithPinnedItems() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "Important", body: "This is important"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // Pin the first item
+        viewModel.togglePin(for: viewModel.transcript.first!.id)
+
+        viewModel.composerText = "/pins"
+        await viewModel.sendPrompt()
+
+        let pinItems = viewModel.transcript.filter { $0.title == "Pinned" }
+        XCTAssertFalse(pinItems.isEmpty)
+        XCTAssertTrue(pinItems.last?.body.contains("Important") == true)
+    }
+
     // MARK: - Source grouping
 
     func testSourcesByKindGroupsCorrectly() {

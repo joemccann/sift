@@ -1508,6 +1508,24 @@ final class DuckDBPreviewTableTests: XCTestCase {
     }
 }
 
+// MARK: - /pins command
+
+final class PinsCommandTests: XCTestCase {
+    func testPinsCommandReturnsShowPinnedItems() {
+        let action = AssistantPlanner.plan(prompt: "/pins", source: nil)
+        XCTAssertEqual(action, .showPinnedItems)
+    }
+
+    func testPinnedCommandAlsoWorks() {
+        let action = AssistantPlanner.plan(prompt: "/pinned", source: nil)
+        XCTAssertEqual(action, .showPinnedItems)
+    }
+
+    func testPinsInCommandRegistry() {
+        XCTAssertTrue(CommandRegistry.allCommands.contains(where: { $0.command == "/pins" }))
+    }
+}
+
 // MARK: - /info command
 
 final class InfoCommandTests: XCTestCase {

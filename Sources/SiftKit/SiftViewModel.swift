@@ -438,6 +438,23 @@ public final class SiftViewModel: ObservableObject {
                 )
             )
 
+        case .showPinnedItems:
+            let pinned = pinnedItems
+            let body: String
+            if pinned.isEmpty {
+                body = "No pinned items. Pin a transcript item to save it for quick reference."
+            } else {
+                let lines = pinned.map { "📌 **\($0.title)**: \($0.body.prefix(100))\($0.body.count > 100 ? "..." : "")" }
+                body = "**Pinned Items** (\(pinned.count))\n\n" + lines.joined(separator: "\n\n")
+            }
+            replaceThinkingItem(thinkingItem.id, with:
+                TranscriptItem(
+                    role: .assistant,
+                    title: "Pinned",
+                    body: body
+                )
+            )
+
         case .showSourceInfo:
             if let source = selectedSource {
                 let lines = [
