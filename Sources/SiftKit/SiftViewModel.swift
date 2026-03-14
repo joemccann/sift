@@ -383,6 +383,29 @@ public final class SiftViewModel: ObservableObject {
             removeThinkingItem(thinkingItem.id)
             exportTranscriptToClipboard()
 
+        case .bookmarkLastCommand:
+            removeThinkingItem(thinkingItem.id)
+            bookmarkLastCommand()
+
+        case .showBookmarks:
+            let bookmarks = settings.bookmarks
+            let body: String
+            if bookmarks.isEmpty {
+                body = "No bookmarks saved. Run a command and use `/bookmark` to save it."
+            } else {
+                let lines = bookmarks.enumerated().map { index, bm in
+                    "\(index + 1). `\(bm.sql)` → \(bm.sourceName)"
+                }
+                body = "**Saved Bookmarks** (\(bookmarks.count))\n\n" + lines.joined(separator: "\n")
+            }
+            replaceThinkingItem(thinkingItem.id, with:
+                TranscriptItem(
+                    role: .assistant,
+                    title: "Bookmarks",
+                    body: body
+                )
+            )
+
         case .showVersion:
             let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "development"
             let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
@@ -661,6 +684,48 @@ public final class SiftViewModel: ObservableObject {
                 )
             )
         }
+    }
+
+    public func bookmarkLastCommand() {
+        // Find the most recent command preview
+        guard let lastCommand = transcript.last(where: {
+            if case .commandPreview = $0.kind { return true }
+            return false
+        }),
+        case let .commandPreview(sql, sourceName) = lastCommand.kind else {
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Nothing to Bookmark",
+                    body: "No commands found to bookmark. Run a query first."
+                )
+            )
+            return
+        }
+
+        // Check for duplicates
+        if settings.bookmarks.contains(where: { $0.sql == sql }) {
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Already Bookmarked",
+                    body: "This command is already in your bookmarks."
+                )
+            )
+            return
+        }
+
+        let bookmark = BookmarkedCommand(sql: sql, sourceName: sourceName)
+        settings.bookmarks.append(bookmark)
+        persistSnapshot()
+
+        appendTranscript(
+            TranscriptItem(
+                role: .system,
+                title: "Bookmarked",
+                body: "Saved `\(sql)` to bookmarks."
+            )
+        )
     }
 
     public func exportTranscriptToClipboard() {

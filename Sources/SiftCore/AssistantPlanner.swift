@@ -26,6 +26,8 @@ public enum AssistantAction: Equatable, Sendable {
     case exportTranscript
     case showStatus
     case showVersion
+    case showBookmarks
+    case bookmarkLastCommand
 }
 
 public enum PromptLibrary {
@@ -103,6 +105,14 @@ public enum AssistantPlanner {
             return .showVersion
         }
 
+        if trimmed.caseInsensitiveCompare("/bookmarks") == .orderedSame {
+            return .showBookmarks
+        }
+
+        if trimmed.caseInsensitiveCompare("/bookmark") == .orderedSame {
+            return .bookmarkLastCommand
+        }
+
         if trimmed.caseInsensitiveCompare("What can you do?") == .orderedSame || trimmed.caseInsensitiveCompare("/help") == .orderedSame {
             return .assistantReply(
                 """
@@ -117,6 +127,8 @@ public enum AssistantPlanner {
                 • `/export` — Copy full transcript to clipboard as Markdown
                 • `/clear` — Clear the conversation transcript
                 • `/sources` — List all attached data sources
+                • `/bookmark` — Bookmark the last command for quick access
+                • `/bookmarks` — List saved bookmarks
                 • `/status` — Show workspace status summary
                 • `/help` — Show this help message
 

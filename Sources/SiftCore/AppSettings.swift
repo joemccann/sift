@@ -86,19 +86,36 @@ public struct ProviderPreference: Codable, Equatable, Sendable {
     }
 }
 
+public struct BookmarkedCommand: Codable, Equatable, Sendable, Identifiable {
+    public let id: UUID
+    public let sql: String
+    public let sourceName: String
+    public let addedAt: Date
+
+    public init(id: UUID = UUID(), sql: String, sourceName: String, addedAt: Date = Date()) {
+        self.id = id
+        self.sql = sql
+        self.sourceName = sourceName
+        self.addedAt = addedAt
+    }
+}
+
 public struct AppSettings: Codable, Equatable, Sendable {
     public var hasCompletedSetup: Bool
     public var defaultProvider: ProviderKind
     public var providerPreferences: [String: ProviderPreference]
+    public var bookmarks: [BookmarkedCommand]
 
     public init(
         hasCompletedSetup: Bool = false,
         defaultProvider: ProviderKind = .claude,
-        providerPreferences: [String: ProviderPreference] = [:]
+        providerPreferences: [String: ProviderPreference] = [:],
+        bookmarks: [BookmarkedCommand] = []
     ) {
         self.hasCompletedSetup = hasCompletedSetup
         self.defaultProvider = defaultProvider
         self.providerPreferences = providerPreferences
+        self.bookmarks = bookmarks
     }
 
     public func preference(for provider: ProviderKind) -> ProviderPreference {

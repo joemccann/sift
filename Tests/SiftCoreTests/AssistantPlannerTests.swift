@@ -865,6 +865,48 @@ final class MetalWorkspaceSnapshotTests: XCTestCase {
     }
 }
 
+// MARK: - /bookmark commands
+
+final class BookmarkCommandTests: XCTestCase {
+    func testBookmarkCommandReturnsBookmarkLastCommand() {
+        let action = AssistantPlanner.plan(prompt: "/bookmark", source: nil)
+        XCTAssertEqual(action, .bookmarkLastCommand)
+    }
+
+    func testBookmarksCommandReturnsShowBookmarks() {
+        let action = AssistantPlanner.plan(prompt: "/bookmarks", source: nil)
+        XCTAssertEqual(action, .showBookmarks)
+    }
+
+    func testHelpIncludesBookmarks() {
+        let action = AssistantPlanner.plan(prompt: "/help", source: nil)
+        guard case let .assistantReply(reply) = action else {
+            return XCTFail("Expected assistant reply")
+        }
+        XCTAssertTrue(reply.contains("/bookmark"))
+        XCTAssertTrue(reply.contains("/bookmarks"))
+    }
+}
+
+// MARK: - BookmarkedCommand model
+
+final class BookmarkedCommandTests: XCTestCase {
+    func testBookmarkedCommandCodableRoundTrip() throws {
+        let bookmark = BookmarkedCommand(sql: "SELECT 1;", sourceName: "test.duckdb")
+        let data = try JSONEncoder().encode(bookmark)
+        let restored = try JSONDecoder().decode(BookmarkedCommand.self, from: data)
+        XCTAssertEqual(restored.id, bookmark.id)
+        XCTAssertEqual(restored.sql, "SELECT 1;")
+        XCTAssertEqual(restored.sourceName, "test.duckdb")
+    }
+
+    func testBookmarkedCommandEquality() {
+        let a = BookmarkedCommand(id: UUID(), sql: "SELECT 1;", sourceName: "test")
+        let b = a // Same value
+        XCTAssertEqual(a, b)
+    }
+}
+
 // MARK: - /version command
 
 final class VersionCommandTests: XCTestCase {
