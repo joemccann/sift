@@ -50,6 +50,10 @@ fi
 /usr/bin/plutil -replace LSMinimumSystemVersion -string "15.0" "$PLIST_PATH"
 /usr/bin/plutil -replace NSHighResolutionCapable -bool YES "$PLIST_PATH"
 /usr/bin/plutil -replace NSPrincipalClass -string "NSApplication" "$PLIST_PATH"
+/usr/bin/plutil -replace NSAppleMusicUsageDescription -string "Sift does not need access to Apple Music. You can safely deny this." "$PLIST_PATH"
+/usr/bin/plutil -replace NSDesktopFolderUsageDescription -string "Sift needs access to open database and parquet files on your Desktop." "$PLIST_PATH"
+/usr/bin/plutil -replace NSDocumentsFolderUsageDescription -string "Sift needs access to open database and parquet files in Documents." "$PLIST_PATH"
+/usr/bin/plutil -replace NSDownloadsFolderUsageDescription -string "Sift needs access to open database and parquet files in Downloads." "$PLIST_PATH"
 
 # Entitlements for file access so macOS remembers user approval between launches.
 ENTITLEMENTS_PATH="$BUILD_DIR/Sift.entitlements"
@@ -64,7 +68,15 @@ cat > "$ENTITLEMENTS_PATH" <<ENTITLEMENTS_EOF
 </plist>
 ENTITLEMENTS_EOF
 
-# Ad-hoc code sign so macOS can persist TCC decisions across launches.
-/usr/bin/codesign --force --sign - --entitlements "$ENTITLEMENTS_PATH" "$APP_DIR"
+# Sign with stable "Sift Development" certificate if available (preserves TCC grants across rebuilds).
+# Falls back to ad-hoc signing if the certificate hasn't been set up yet.
+CERT_NAME="Sift Development"
+if security find-identity -p codesigning 2>/dev/null | grep -q "$CERT_NAME"; then
+  /usr/bin/codesign --force --sign "$CERT_NAME" --entitlements "$ENTITLEMENTS_PATH" "$APP_DIR"
+else
+  print -u2 -- "Warning: '$CERT_NAME' certificate not found. Using ad-hoc signing (permissions won't persist across rebuilds)."
+  print -u2 -- "Run: ./scripts/setup_signing.sh   to create a stable signing identity."
+  /usr/bin/codesign --force --sign - --entitlements "$ENTITLEMENTS_PATH" "$APP_DIR"
+fi
 
 print -- "$APP_DIR"
