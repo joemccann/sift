@@ -2711,6 +2711,177 @@ final class DuckDBOutputParserTests: XCTestCase {
     }
 }
 
+// MARK: - Source comparison
+
+final class SourceComparisonTests: XCTestCase {
+    func testComparisonSameKind() {
+        let s1 = DataSource(url: URL(fileURLWithPath: "/tmp/a.parquet"), kind: .parquet)
+        let s2 = DataSource(url: URL(fileURLWithPath: "/tmp/b.parquet"), kind: .parquet)
+        let cmp = SourceComparison(source1: s1, source2: s2)
+        XCTAssertTrue(cmp.sameKind)
+        XCTAssertTrue(cmp.sameDirectory)
+        XCTAssertTrue(cmp.sameExtension)
+    }
+
+    func testComparisonDifferentKind() {
+        let s1 = DataSource(url: URL(fileURLWithPath: "/tmp/a.parquet"), kind: .parquet)
+        let s2 = DataSource(url: URL(fileURLWithPath: "/data/b.csv"), kind: .csv)
+        let cmp = SourceComparison(source1: s1, source2: s2)
+        XCTAssertFalse(cmp.sameKind)
+        XCTAssertFalse(cmp.sameDirectory)
+        XCTAssertFalse(cmp.sameExtension)
+    }
+
+    func testComparisonSummary() {
+        let s1 = DataSource(url: URL(fileURLWithPath: "/tmp/a.parquet"), kind: .parquet)
+        let s2 = DataSource(url: URL(fileURLWithPath: "/tmp/b.parquet"), kind: .parquet)
+        let cmp = SourceComparison(source1: s1, source2: s2)
+        let summary = cmp.summary
+        XCTAssertTrue(summary.contains("a.parquet"))
+        XCTAssertTrue(summary.contains("b.parquet"))
+        XCTAssertTrue(summary.contains("✓"))
+    }
+}
+
+// MARK: - DuckDB error recovery
+
+final class DuckDBErrorRecoveryTests: XCTestCase {
+    func testTableNotFoundSuggestion() {
+        let suggestions = DuckDBErrorRecovery.suggestions(for: "Catalog Error: Table 'trades' does not exist")
+        XCTAssertTrue(suggestions.contains(where: { $0.contains("SHOW TABLES") }))
+    }
+
+    func testColumnNotFoundSuggestion() {
+        let suggestions = DuckDBErrorRecovery.suggestions(for: "Binder Error: column 'price' not found")
+        XCTAssertTrue(suggestions.contains(where: { $0.contains("DESCRIBE") }))
+    }
+
+    func testSyntaxErrorSuggestion() {
+        let suggestions = DuckDBErrorRecovery.suggestions(for: "Parser Error: syntax error at end of input")
+        XCTAssertTrue(suggestions.contains(where: { $0.contains("syntax") }))
+    }
+
+    func testOutOfMemorySuggestion() {
+        let suggestions = DuckDBErrorRecovery.suggestions(for: "Out of Memory Error: not enough memory")
+        XCTAssertTrue(suggestions.contains(where: { $0.contains("LIMIT") }))
+    }
+
+    func testFileNotFoundSuggestion() {
+        let suggestions = DuckDBErrorRecovery.suggestions(for: "IO Error: File not found: /tmp/missing.parquet")
+        XCTAssertTrue(suggestions.contains(where: { $0.contains("file path") }))
+    }
+
+    func testUnknownErrorGivesFallback() {
+        let suggestions = DuckDBErrorRecovery.suggestions(for: "Something completely unexpected")
+        XCTAssertFalse(suggestions.isEmpty)
+        XCTAssertTrue(suggestions.contains(where: { $0.contains("/help") }))
+    }
+
+    func testPermissionDeniedSuggestion() {
+        let suggestions = DuckDBErrorRecovery.suggestions(for: "Permission denied: access denied to file")
+        XCTAssertTrue(suggestions.contains(where: { $0.contains("permission") }))
+    }
+}
+
+// MARK: - DataSource favorites
+
+final class DataSourceFavoriteTests: XCTestCase {
+    func testDefaultIsFavoriteIsFalse() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        XCTAssertFalse(source.isFavorite)
+    }
+
+    func testFavoriteCodableRoundTrip() throws {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv, isFavorite: true)
+        let data = try JSONEncoder().encode(source)
+        let restored = try JSONDecoder().decode(DataSource.self, from: data)
+        XCTAssertTrue(restored.isFavorite)
+    }
+}
+
+// MARK: - DuckDB distinct pattern
+
+final class DuckDBDistinctPatternTests: XCTestCase {
+    func testDistinctColumnInTable() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "distinct symbol in trades", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("SELECT DISTINCT symbol"))
+        XCTAssertTrue(plan.sql.contains("FROM trades"))
+    }
+
+    func testUniqueValuesOfColumnFromTable() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "unique values of status from orders", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("DISTINCT status"))
+        XCTAssertTrue(plan.sql.contains("FROM orders"))
+    }
+
+    func testExtractDistinctPattern() {
+        let result = AssistantPlanner.extractDistinctPattern(from: "distinct symbol in trades")
+        XCTAssertEqual(result?.table, "trades")
+        XCTAssertEqual(result?.column, "symbol")
+    }
+
+    func testExtractDistinctPatternNoMatch() {
+        XCTAssertNil(AssistantPlanner.extractDistinctPattern(from: "show me data"))
+    }
+}
+
+// MARK: - DuckDB group-by pattern
+
+final class DuckDBGroupByPatternTests: XCTestCase {
+    func testGroupByColumnInTable() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "group by symbol in trades", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("GROUP BY symbol"))
+        XCTAssertTrue(plan.sql.contains("FROM trades"))
+        XCTAssertTrue(plan.sql.contains("COUNT(*)"))
+    }
+
+    func testCountByCategory() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "count by category from products", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("GROUP BY category"))
+        XCTAssertTrue(plan.sql.contains("FROM products"))
+    }
+
+    func testExtractGroupByPattern() {
+        let result = AssistantPlanner.extractGroupByPattern(from: "group by region in sales")
+        XCTAssertEqual(result?.table, "sales")
+        XCTAssertEqual(result?.column, "region")
+    }
+
+    func testBreakdownByPattern() {
+        let result = AssistantPlanner.extractGroupByPattern(from: "breakdown by status from orders")
+        XCTAssertEqual(result?.table, "orders")
+        XCTAssertEqual(result?.column, "status")
+    }
+
+    func testExtractGroupByNoMatch() {
+        XCTAssertNil(AssistantPlanner.extractGroupByPattern(from: "show me everything"))
+    }
+}
+
 // MARK: - DuckDB output parser edge cases
 
 final class DuckDBOutputParserEdgeCaseTests: XCTestCase {

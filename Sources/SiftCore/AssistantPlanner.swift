@@ -697,6 +697,26 @@ public enum AssistantPlanner {
             )
         }
 
+        if let distinctInfo = extractDistinctPattern(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT DISTINCT \(distinctInfo.column) FROM \(distinctInfo.table) ORDER BY \(distinctInfo.column);",
+                    explanation: "Unique values of \(distinctInfo.column) in \(distinctInfo.table) from \(source.displayName)."
+                )
+            )
+        }
+
+        if let groupInfo = extractGroupByPattern(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT \(groupInfo.column), COUNT(*) AS count FROM \(groupInfo.table) GROUP BY \(groupInfo.column) ORDER BY count DESC;",
+                    explanation: "Counting rows by \(groupInfo.column) in \(groupInfo.table) from \(source.displayName)."
+                )
+            )
+        }
+
         if let filter = extractWhereFilter(from: lowercased) {
             return .command(
                 DuckDBCommandPlan(
@@ -820,6 +840,46 @@ public enum AssistantPlanner {
     }
 
     /// Extracts a table name from "count [table]" or "count rows in [table]"
+    /// Extracts "distinct [column] in [table]" or "unique [column] from [table]"
+    static func extractDistinctPattern(from lowercased: String) -> (table: String, column: String)? {
+        let patterns = [
+            "distinct (\\w+) (?:in|from) (\\w+)",
+            "unique (\\w+) (?:in|from) (\\w+)",
+            "unique values (?:of|in|for) (\\w+) (?:in|from) (\\w+)",
+        ]
+
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)),
+               match.numberOfRanges >= 3,
+               let colRange = Range(match.range(at: 1), in: lowercased),
+               let tableRange = Range(match.range(at: 2), in: lowercased) {
+                return (table: String(lowercased[tableRange]), column: String(lowercased[colRange]))
+            }
+        }
+        return nil
+    }
+
+    /// Extracts "group by [column] in [table]" or "count by [column] in [table]"
+    static func extractGroupByPattern(from lowercased: String) -> (table: String, column: String)? {
+        let patterns = [
+            "group by (\\w+) (?:in|from) (\\w+)",
+            "count by (\\w+) (?:in|from) (\\w+)",
+            "breakdown by (\\w+) (?:in|from) (\\w+)",
+        ]
+
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)),
+               match.numberOfRanges >= 3,
+               let colRange = Range(match.range(at: 1), in: lowercased),
+               let tableRange = Range(match.range(at: 2), in: lowercased) {
+                return (table: String(lowercased[tableRange]), column: String(lowercased[colRange]))
+            }
+        }
+        return nil
+    }
+
     /// Extracts "filter [table] where [condition]" or "where [condition] in [table]" pattern
     static func extractWhereFilter(from lowercased: String) -> (table: String, condition: String)? {
         let patterns = [
@@ -898,7 +958,7 @@ public enum AssistantPlanner {
             "count (\\w+)",
         ]
         let reservedWords: Set<String> = [
-            "the", "this", "rows", "all", "my", "a", "them", "it", "everything",
+            "the", "this", "rows", "all", "my", "a", "them", "it", "everything", "by",
         ]
 
         for pattern in patterns {

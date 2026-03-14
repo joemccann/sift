@@ -43,19 +43,22 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
     public let kind: DataSourceKind
     public let addedAt: Date
     public var alias: String?
+    public var isFavorite: Bool
 
     public init(
         id: UUID = UUID(),
         url: URL,
         kind: DataSourceKind,
         addedAt: Date = Date(),
-        alias: String? = nil
+        alias: String? = nil,
+        isFavorite: Bool = false
     ) {
         self.id = id
         self.url = url
         self.kind = kind
         self.addedAt = addedAt
         self.alias = alias
+        self.isFavorite = isFavorite
     }
 
     /// Returns the alias if set, otherwise the filename
@@ -182,6 +185,79 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
             return nil
         }
         return from(url: url)
+    }
+}
+
+// MARK: - Source Comparison
+
+public struct SourceComparison: Equatable, Sendable {
+    public let source1Name: String
+    public let source2Name: String
+    public let sameKind: Bool
+    public let sameDirectory: Bool
+    public let sameExtension: Bool
+
+    public init(source1: DataSource, source2: DataSource) {
+        self.source1Name = source1.displayName
+        self.source2Name = source2.displayName
+        self.sameKind = source1.kind == source2.kind
+        self.sameDirectory = source1.directoryName == source2.directoryName
+        self.sameExtension = source1.fileExtension == source2.fileExtension
+    }
+
+    public var summary: String {
+        var lines = ["\(source1Name) vs \(source2Name)"]
+        lines.append("Same type: \(sameKind ? "✓" : "✗")")
+        lines.append("Same directory: \(sameDirectory ? "✓" : "✗")")
+        lines.append("Same extension: \(sameExtension ? "✓" : "✗")")
+        return lines.joined(separator: "\n")
+    }
+}
+
+// MARK: - DuckDB Error Recovery
+
+public enum DuckDBErrorRecovery {
+    /// Suggest recovery actions based on an error message
+    public static func suggestions(for errorMessage: String) -> [String] {
+        let lowered = errorMessage.lowercased()
+        var suggestions: [String] = []
+
+        if lowered.contains("table") && lowered.contains("not") && lowered.contains("exist") {
+            suggestions.append("Run SHOW TABLES; to see available tables")
+            suggestions.append("Check for typos in the table name")
+        }
+
+        if lowered.contains("column") && (lowered.contains("not found") || lowered.contains("not exist")) {
+            suggestions.append("Run DESCRIBE tablename; to see available columns")
+            suggestions.append("Check column name spelling and case")
+        }
+
+        if lowered.contains("syntax error") || lowered.contains("parse error") {
+            suggestions.append("Check SQL syntax — missing semicolon, unmatched quotes, or keywords")
+            suggestions.append("Try simplifying the query")
+        }
+
+        if lowered.contains("permission") || lowered.contains("access denied") {
+            suggestions.append("Check file permissions on the source file")
+            suggestions.append("Try opening the file with read-only mode")
+        }
+
+        if lowered.contains("out of memory") || lowered.contains("memory") {
+            suggestions.append("Try adding LIMIT to reduce result size")
+            suggestions.append("Use SUMMARIZE instead of SELECT * for large tables")
+        }
+
+        if lowered.contains("file") && lowered.contains("not found") {
+            suggestions.append("Check that the file path exists")
+            suggestions.append("Use /sources to verify attached sources")
+        }
+
+        if suggestions.isEmpty {
+            suggestions.append("Try /help for available commands")
+            suggestions.append("Check DuckDB documentation for the specific error")
+        }
+
+        return suggestions
     }
 }
 

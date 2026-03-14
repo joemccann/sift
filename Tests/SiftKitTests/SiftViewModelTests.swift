@@ -1814,6 +1814,75 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sources.first?.displayName, "data.parquet")
     }
 
+    // MARK: - Source favorites
+
+    func testToggleFavorite() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+        let sourceID = viewModel.sources.first!.id
+
+        XCTAssertTrue(viewModel.favoriteSources.isEmpty)
+
+        viewModel.toggleFavorite(for: sourceID)
+        XCTAssertEqual(viewModel.favoriteSources.count, 1)
+
+        viewModel.toggleFavorite(for: sourceID)
+        XCTAssertTrue(viewModel.favoriteSources.isEmpty)
+    }
+
+    func testToggleFavoriteNonexistentIDDoesNothing() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.toggleFavorite(for: UUID())
+        XCTAssertTrue(viewModel.favoriteSources.isEmpty)
+    }
+
+    // MARK: - Source comparison
+
+    func testCompareSourcesSameKind() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.parquet"))
+
+        let ids = viewModel.sources.map(\.id)
+        let cmp = viewModel.compareSources(ids[0], ids[1])
+        XCTAssertNotNil(cmp)
+        XCTAssertTrue(cmp!.sameKind)
+        XCTAssertTrue(cmp!.sameDirectory)
+    }
+
+    func testCompareSourcesInvalidID() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertNil(viewModel.compareSources(UUID(), UUID()))
+    }
+
     // MARK: - Output parsing integration
 
     func testOutputParserOnSuccessfulResult() async {

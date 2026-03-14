@@ -232,6 +232,27 @@ public final class SiftViewModel: ObservableObject {
         Array(Set(transcript.flatMap(\.tags))).sorted()
     }
 
+    /// Toggle favorite status for a source
+    public func toggleFavorite(for sourceID: UUID) {
+        guard let index = sources.firstIndex(where: { $0.id == sourceID }) else { return }
+        sources[index].isFavorite.toggle()
+        persistSnapshot()
+    }
+
+    /// Favorite sources
+    public var favoriteSources: [DataSource] {
+        sources.filter(\.isFavorite)
+    }
+
+    /// Compare two sources
+    public func compareSources(_ source1ID: UUID, _ source2ID: UUID) -> SourceComparison? {
+        guard let s1 = sources.first(where: { $0.id == source1ID }),
+              let s2 = sources.first(where: { $0.id == source2ID }) else {
+            return nil
+        }
+        return SourceComparison(source1: s1, source2: s2)
+    }
+
     /// Set an alias for a source
     public func setSourceAlias(_ alias: String?, for sourceID: UUID) {
         guard let index = sources.firstIndex(where: { $0.id == sourceID }) else { return }
