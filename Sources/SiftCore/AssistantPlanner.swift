@@ -737,7 +737,7 @@ public enum AssistantPlanner {
             )
         }
 
-        if let filter = extractWhereFilter(from: lowercased) {
+        if !looksLikeSQL(prompt), let filter = extractWhereFilter(from: lowercased) {
             return .command(
                 DuckDBCommandPlan(
                     source: source,

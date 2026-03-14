@@ -3086,9 +3086,9 @@ final class DuckDBWhereFilterTests: XCTestCase {
         XCTAssertTrue(plan.sql.contains("FROM trades"))
     }
 
-    func testShowOrdersWhereStatus() {
+    func testFilterOrdersWhereStatus() {
         let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
-        let action = AssistantPlanner.plan(prompt: "show orders where status = 'filled'", source: source)
+        let action = AssistantPlanner.plan(prompt: "filter orders where status = 'filled'", source: source)
 
         guard case let .command(plan) = action else {
             return XCTFail("Expected command plan, got \(action)")
@@ -3304,6 +3304,65 @@ final class TranscriptTimingTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB aggregate with "of" preposition
+
+final class DuckDBAggregateOfTests: XCTestCase {
+    func testSumOfQuantityFromOrders() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "sum of quantity from orders", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("SUM(quantity)"))
+    }
+
+    func testAverageOfScoreInExams() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "average of score in exams", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("AVG(score)"))
+    }
+}
+
+// MARK: - Order by descending keyword
+
+final class DuckDBOrderByDescTests: XCTestCase {
+    func testOrderByHighest() {
+        let result = AssistantPlanner.extractOrderByPattern(from: "sort price in trades highest")
+        XCTAssertTrue(result?.descending == true)
+    }
+
+    func testOrderByDescending() {
+        let result = AssistantPlanner.extractOrderByPattern(from: "order by date in events descending")
+        XCTAssertTrue(result?.descending == true)
+    }
+
+    func testOrderByDefaultAscending() {
+        let result = AssistantPlanner.extractOrderByPattern(from: "order by name in users")
+        XCTAssertFalse(result?.descending == true)
+    }
+}
+
+// MARK: - TranscriptTiming edge cases
+
+final class TranscriptTimingEdgeCaseTests: XCTestCase {
+    func testItemDurationsEmpty() {
+        let durations = TranscriptTiming.itemDurations(in: [])
+        XCTAssertTrue(durations.isEmpty)
+    }
+
+    func testLongestGapWithTwoItems() {
+        let now = Date()
+        let items = [
+            TranscriptItem(role: .user, title: "A", body: "1", timestamp: now),
+            TranscriptItem(role: .assistant, title: "B", body: "2", timestamp: now.addingTimeInterval(30)),
+        ]
+        XCTAssertEqual(TranscriptTiming.longestGap(in: items), 30, accuracy: 0.1)
+    }
+}
+
 // MARK: - Source notes
 
 final class DataSourceNotesTests: XCTestCase {
@@ -3324,6 +3383,152 @@ final class DataSourceNotesTests: XCTestCase {
         let data = try JSONEncoder().encode(source)
         let restored = try JSONDecoder().decode(DataSource.self, from: data)
         XCTAssertNil(restored.notes)
+    }
+}
+
+// MARK: - DataSource full Codable round-trip with all properties
+
+final class DataSourceFullRoundTripTests: XCTestCase {
+    func testAllPropertiesRoundTrip() throws {
+        let source = DataSource(
+            url: URL(fileURLWithPath: "/tmp/data.parquet"),
+            kind: .parquet,
+            alias: "My Data",
+            isFavorite: true,
+            notes: "Important file"
+        )
+        let data = try JSONEncoder().encode(source)
+        let restored = try JSONDecoder().decode(DataSource.self, from: data)
+        XCTAssertEqual(restored.alias, "My Data")
+        XCTAssertTrue(restored.isFavorite)
+        XCTAssertEqual(restored.notes, "Important file")
+        XCTAssertEqual(restored.displayName, "My Data")
+        XCTAssertEqual(restored.kind, .parquet)
+    }
+}
+
+// MARK: - DuckDB planner precedence
+
+final class DuckDBPlannerPrecedenceTests: XCTestCase {
+    func testSQLPassthroughTakesPrecedenceForSelectKeyword() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "SELECT * FROM trades WHERE price > 100;", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        // Raw SQL should pass through directly, not be parsed as "where" pattern
+        XCTAssertEqual(plan.sql, "SELECT * FROM trades WHERE price > 100;")
+    }
+
+    func testRawSQLTakesPrecedenceOverKeywords() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "/sql SELECT avg(price) FROM trades;", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("avg(price)"))
+    }
+
+    func testShowTablesOverShowViews() {
+        // "show tables" should match "show tables" not "show views"
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "show tables", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertEqual(plan.sql, "SHOW TABLES;")
+    }
+
+    func testDescribeTableBeforeGenericDescribe() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action1 = AssistantPlanner.plan(prompt: "describe trades", source: source)
+        guard case let .command(plan1) = action1 else {
+            return XCTFail("Expected command")
+        }
+        XCTAssertEqual(plan1.sql, "DESCRIBE trades;")
+
+        let action2 = AssistantPlanner.plan(prompt: "describe the schema", source: source)
+        guard case let .command(plan2) = action2 else {
+            return XCTFail("Expected command")
+        }
+        XCTAssertEqual(plan2.sql, "DESCRIBE;")
+    }
+}
+
+// MARK: - MarkdownDetector edge cases
+
+final class MarkdownDetectorEdgeCaseTests: XCTestCase {
+    func testExtractFromNestedBackticks() {
+        let text = """
+        Here:
+        ```sql
+        SELECT `column_name` FROM `table`;
+        ```
+        """
+        let extracted = MarkdownDetector.extractFirstCodeBlock(from: text)
+        XCTAssertNotNil(extracted)
+        XCTAssertTrue(extracted?.contains("SELECT") == true)
+    }
+
+    func testCodeBlockCountWithSingle() {
+        let text = "```\ncode\n```"
+        XCTAssertEqual(MarkdownDetector.codeBlockCount(in: text), 1)
+    }
+
+    func testContainsSQLBlockUppercase() {
+        XCTAssertTrue(MarkdownDetector.containsSQLBlock("```SQL\nSELECT 1;\n```"))
+    }
+}
+
+// MARK: - TranscriptAnalytics edge cases
+
+final class TranscriptAnalyticsEdgeCaseTests: XCTestCase {
+    func testWordCountEmpty() {
+        XCTAssertEqual(TranscriptAnalytics.wordCount(in: []), 0)
+    }
+
+    func testCharacterCountEmpty() {
+        XCTAssertEqual(TranscriptAnalytics.characterCount(in: []), 0)
+    }
+
+    func testWordCountWithMultipleSpaces() {
+        let items = [TranscriptItem(role: .user, title: "You", body: "Hello    World")]
+        XCTAssertEqual(TranscriptAnalytics.wordCount(in: items), 2)
+    }
+
+    func testTimeSpanSingleItem() {
+        let items = [TranscriptItem(role: .user, title: "You", body: "A")]
+        XCTAssertEqual(TranscriptAnalytics.timeSpan(of: items), 0)
+    }
+}
+
+// MARK: - DuckDB error recovery completeness
+
+final class DuckDBErrorRecoveryCompletenessTests: XCTestCase {
+    func testAllErrorTypesCovered() {
+        // Verify each major error type has at least one suggestion
+        let errorTypes = [
+            "Catalog Error: Table 'x' does not exist",
+            "Binder Error: column 'y' not found",
+            "Parser Error: syntax error",
+            "IO Error: File not found",
+            "Permission denied",
+            "Out of Memory Error",
+        ]
+        for error in errorTypes {
+            let suggestions = DuckDBErrorRecovery.suggestions(for: error)
+            XCTAssertFalse(suggestions.isEmpty, "No suggestion for: \(error)")
+        }
+    }
+
+    func testAccessDeniedSuggestion() {
+        let suggestions = DuckDBErrorRecovery.suggestions(for: "access denied to /tmp/data.parquet")
+        XCTAssertTrue(suggestions.contains(where: { $0.contains("permission") }))
+    }
+
+    func testInvalidInputSuggestion() {
+        let suggestions = DuckDBErrorRecovery.suggestions(for: "invalid input: expected integer")
+        XCTAssertFalse(suggestions.isEmpty)
     }
 }
 

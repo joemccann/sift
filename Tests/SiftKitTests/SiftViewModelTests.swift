@@ -1957,6 +1957,35 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.favoriteSources.isEmpty)
     }
 
+    // MARK: - Notes on nonexistent source
+
+    func testSetNotesOnNonexistentSourceDoesNothing() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.setSourceNotes("Test", for: UUID())
+        XCTAssertTrue(viewModel.sourcesWithNotes.isEmpty)
+    }
+
+    func testNotesWithWhitespaceIsTrimmed() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+        viewModel.setSourceNotes("  Some notes  ", for: viewModel.sources.first!.id)
+        XCTAssertEqual(viewModel.sources.first?.notes, "Some notes")
+    }
+
     // MARK: - Source notes
 
     func testSetSourceNotes() {
