@@ -1814,6 +1814,60 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sources.first?.displayName, "data.parquet")
     }
 
+    // MARK: - Provider preference lookup
+
+    func testPreferenceDefaultsForAllProviders() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        for provider in ProviderKind.allCases {
+            let pref = viewModel.preference(for: provider)
+            XCTAssertEqual(pref.authMode, .localCLI)
+        }
+    }
+
+    func testRequiresInitialSetupAfterComplete() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertFalse(viewModel.requiresInitialSetup)
+    }
+
+    func testSelectedProviderReflectsSettings() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true, defaultProvider: .gemini), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertEqual(viewModel.selectedProvider, .gemini)
+    }
+
+    func testMetalSnapshotProviderReadinessWithMultipleKeys() {
+        let secretStore = MemorySecretStore(keys: [.claude: "key1", .openAI: "key2", .gemini: "key3"])
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: secretStore,
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertEqual(viewModel.metalSnapshot.providerReadiness, 3)
+    }
+
     // MARK: - Source kind filtering
 
     func testSourcesOfKind() {
