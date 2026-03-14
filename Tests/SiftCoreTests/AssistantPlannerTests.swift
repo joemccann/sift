@@ -2837,6 +2837,98 @@ final class DuckDBDistinctPatternTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB combined patterns integration
+
+final class DuckDBCombinedPatternTests: XCTestCase {
+    func testDistinctBeforeGroupBy() {
+        // "distinct" should be checked before "group by" 
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "distinct category in products", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("DISTINCT"))
+    }
+
+    func testWhereFilterBeforeJoin() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "filter trades where price > 50", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("WHERE"))
+    }
+
+    func testJoinPatternGeneratesSQL() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "join users and orders on user_id", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("JOIN"))
+        XCTAssertTrue(plan.sql.contains("USING"))
+    }
+
+    func testTopNByColumnGeneratesOrderBy() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "top 5 by revenue from sales", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("ORDER BY"))
+        XCTAssertTrue(plan.sql.contains("LIMIT 5"))
+    }
+}
+
+// MARK: - Error recovery for various error types
+
+final class DuckDBErrorRecoveryEdgeCaseTests: XCTestCase {
+    func testMultipleMatchesCombineSuggestions() {
+        // An error containing both "column" and "not found" + "syntax error"
+        let suggestions = DuckDBErrorRecovery.suggestions(for: "Binder Error: column 'x' not found, also syntax error at position 5")
+        // Should have suggestions for both
+        XCTAssertTrue(suggestions.count >= 2)
+    }
+
+    func testEmptyErrorMessageGivesFallback() {
+        let suggestions = DuckDBErrorRecovery.suggestions(for: "")
+        XCTAssertFalse(suggestions.isEmpty)
+    }
+
+    func testInvalidKeywordInErrorDetected() {
+        let suggestions = DuckDBErrorRecovery.suggestions(for: "something invalid happened")
+        XCTAssertFalse(suggestions.isEmpty)
+    }
+}
+
+// MARK: - Source comparison edge cases
+
+final class SourceComparisonEdgeCaseTests: XCTestCase {
+    func testComparisonEquality() {
+        let s1 = DataSource(url: URL(fileURLWithPath: "/tmp/a.parquet"), kind: .parquet)
+        let s2 = DataSource(url: URL(fileURLWithPath: "/tmp/b.parquet"), kind: .parquet)
+        let cmpA = SourceComparison(source1: s1, source2: s2)
+        let cmpB = SourceComparison(source1: s1, source2: s2)
+        XCTAssertEqual(cmpA, cmpB)
+    }
+
+    func testComparisonDifferentDirectories() {
+        let s1 = DataSource(url: URL(fileURLWithPath: "/data/a.parquet"), kind: .parquet)
+        let s2 = DataSource(url: URL(fileURLWithPath: "/other/b.parquet"), kind: .parquet)
+        let cmp = SourceComparison(source1: s1, source2: s2)
+        XCTAssertTrue(cmp.sameKind)
+        XCTAssertFalse(cmp.sameDirectory)
+    }
+
+    func testComparisonCSVvsTSV() {
+        let s1 = DataSource(url: URL(fileURLWithPath: "/tmp/a.csv"), kind: .csv)
+        let s2 = DataSource(url: URL(fileURLWithPath: "/tmp/b.tsv"), kind: .csv)
+        let cmp = SourceComparison(source1: s1, source2: s2)
+        XCTAssertTrue(cmp.sameKind) // Both are .csv kind
+        XCTAssertFalse(cmp.sameExtension) // csv vs tsv
+    }
+}
+
 // MARK: - DuckDB group-by pattern
 
 final class DuckDBGroupByPatternTests: XCTestCase {

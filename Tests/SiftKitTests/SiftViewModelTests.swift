@@ -1814,6 +1814,149 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sources.first?.displayName, "data.parquet")
     }
 
+    // MARK: - Combined workflow: favorites + aliases + tags
+
+    func testFavoriteAliasTagWorkflow() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Important result"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // Import and configure a source
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+        let sourceID = viewModel.sources.first!.id
+        viewModel.setSourceAlias("Market Data", for: sourceID)
+        viewModel.toggleFavorite(for: sourceID)
+
+        // Tag a transcript item
+        let itemID = viewModel.transcript.first!.id
+        viewModel.addTag("key-result", to: itemID)
+        viewModel.togglePin(for: itemID)
+
+        // Verify all changes
+        XCTAssertEqual(viewModel.sources.first?.displayName, "Market Data")
+        XCTAssertTrue(viewModel.sources.first?.isFavorite == true)
+        XCTAssertEqual(viewModel.favoriteCount, 1)
+        XCTAssertEqual(viewModel.pinnedItemCount, 1)
+        XCTAssertEqual(viewModel.totalTagCount, 1)
+        XCTAssertTrue(viewModel.hasAliasedSources)
+    }
+
+    func testSessionSnapshotPreservesAllState() {
+        let sessionStore = MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: []))
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: sessionStore,
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+        let sourceID = viewModel.sources.first!.id
+        viewModel.setSourceAlias("Test", for: sourceID)
+        viewModel.toggleFavorite(for: sourceID)
+
+        // Check the snapshot persisted correctly
+        let saved = sessionStore.lastSaved
+        XCTAssertNotNil(saved)
+        XCTAssertEqual(saved?.sources.first?.alias, "Test")
+        XCTAssertTrue(saved?.sources.first?.isFavorite == true)
+    }
+
+    func testMultipleCommandsTrackInHistory() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "SELECT 1;"],
+            sql: "SELECT 1;",
+            stdout: "1\n", stderr: "", exitCode: 0,
+            startedAt: Date(), endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+
+        await viewModel.triggerPrompt("Preview this parquet file")
+        await viewModel.triggerPrompt("Count rows")
+        await viewModel.triggerPrompt("Show schema")
+
+        XCTAssertEqual(viewModel.commandCount, 3)
+        XCTAssertEqual(viewModel.commandPreviews.count, 3)
+        XCTAssertEqual(viewModel.commandResults.count, 3)
+    }
+
+    func testExportAfterMultipleInteractions() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "Here is the analysis.")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/help"
+        await viewModel.sendPrompt()
+        viewModel.composerText = "Explain something"
+        await viewModel.sendPrompt()
+
+        let json = viewModel.exportSessionAsJSON()
+        XCTAssertNotNil(json)
+        XCTAssertTrue(json!.contains("Sift Commands"))
+    }
+
+    func testContextualSuggestionsAfterCommands() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [], sql: "SELECT 1;",
+            stdout: "1\n", stderr: "", exitCode: 0,
+            startedAt: Date(), endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"))
+        await viewModel.triggerPrompt("Show tables")
+
+        // After commands, suggestions should change
+        let suggestions = viewModel.contextualSuggestions
+        XCTAssertFalse(suggestions.isEmpty)
+    }
+
+    func testResetClearsEverythingIncludingFavorites() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+        viewModel.toggleFavorite(for: viewModel.sources.first!.id)
+
+        viewModel.composerText = "/reset"
+        await viewModel.sendPrompt()
+
+        XCTAssertTrue(viewModel.sources.isEmpty)
+        XCTAssertTrue(viewModel.favoriteSources.isEmpty)
+    }
+
     // MARK: - Error/success results
 
     func testErrorAndSuccessResults() {
