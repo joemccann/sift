@@ -86,6 +86,32 @@ public struct ProviderPreference: Codable, Equatable, Sendable {
     }
 }
 
+public struct QueryExecutionStats: Codable, Equatable, Sendable {
+    public let sql: String
+    public let durationMilliseconds: Double
+    public let rowsAffected: Int?
+    public let succeeded: Bool
+    public let timestamp: Date
+
+    public init(sql: String, durationMilliseconds: Double, rowsAffected: Int? = nil, succeeded: Bool, timestamp: Date = Date()) {
+        self.sql = sql
+        self.durationMilliseconds = durationMilliseconds
+        self.rowsAffected = rowsAffected
+        self.succeeded = succeeded
+        self.timestamp = timestamp
+    }
+
+    public var durationFormatted: String {
+        if durationMilliseconds < 1 {
+            return "<1ms"
+        } else if durationMilliseconds < 1000 {
+            return String(format: "%.0fms", durationMilliseconds)
+        } else {
+            return String(format: "%.2fs", durationMilliseconds / 1000)
+        }
+    }
+}
+
 public struct BookmarkedCommand: Codable, Equatable, Sendable, Identifiable {
     public let id: UUID
     public let sql: String

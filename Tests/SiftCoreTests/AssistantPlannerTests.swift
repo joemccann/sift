@@ -2359,3 +2359,117 @@ final class CommandRegistryEdgeCaseTests: XCTestCase {
     }
 }
 
+// MARK: - QueryExecutionStats
+
+final class QueryExecutionStatsTests: XCTestCase {
+    func testDurationFormattedSubMillisecond() {
+        let stats = QueryExecutionStats(sql: "SELECT 1;", durationMilliseconds: 0.5, succeeded: true)
+        XCTAssertEqual(stats.durationFormatted, "<1ms")
+    }
+
+    func testDurationFormattedMilliseconds() {
+        let stats = QueryExecutionStats(sql: "SELECT 1;", durationMilliseconds: 42, succeeded: true)
+        XCTAssertEqual(stats.durationFormatted, "42ms")
+    }
+
+    func testDurationFormattedSeconds() {
+        let stats = QueryExecutionStats(sql: "SELECT 1;", durationMilliseconds: 2500, succeeded: true)
+        XCTAssertEqual(stats.durationFormatted, "2.50s")
+    }
+
+    func testCodableRoundTrip() throws {
+        let stats = QueryExecutionStats(sql: "SELECT 1;", durationMilliseconds: 100, rowsAffected: 42, succeeded: true)
+        let data = try JSONEncoder().encode(stats)
+        let restored = try JSONDecoder().decode(QueryExecutionStats.self, from: data)
+        XCTAssertEqual(restored.sql, "SELECT 1;")
+        XCTAssertEqual(restored.durationMilliseconds, 100)
+        XCTAssertEqual(restored.rowsAffected, 42)
+        XCTAssertTrue(restored.succeeded)
+    }
+
+    func testFailedStats() {
+        let stats = QueryExecutionStats(sql: "INVALID;", durationMilliseconds: 5, succeeded: false)
+        XCTAssertFalse(stats.succeeded)
+        XCTAssertEqual(stats.durationFormatted, "5ms")
+    }
+}
+
+// MARK: - TranscriptAnalytics
+
+final class TranscriptAnalyticsTests: XCTestCase {
+    func testWordCount() {
+        let items = [
+            TranscriptItem(role: .user, title: "You", body: "Hello world"),
+            TranscriptItem(role: .assistant, title: "A", body: "Three word reply"),
+        ]
+        XCTAssertEqual(TranscriptAnalytics.wordCount(in: items), 5)
+    }
+
+    func testCharacterCount() {
+        let items = [
+            TranscriptItem(role: .user, title: "You", body: "Hi"),
+        ]
+        XCTAssertEqual(TranscriptAnalytics.characterCount(in: items), 2)
+    }
+
+    func testAverageWordsPerMessage() {
+        let items = [
+            TranscriptItem(role: .user, title: "You", body: "One two"),
+            TranscriptItem(role: .assistant, title: "A", body: "Three four five six"),
+        ]
+        XCTAssertEqual(TranscriptAnalytics.averageWordsPerMessage(in: items), 3.0)
+    }
+
+    func testAverageWordsEmpty() {
+        XCTAssertEqual(TranscriptAnalytics.averageWordsPerMessage(in: []), 0)
+    }
+
+    func testTimeSpan() {
+        let now = Date()
+        let items = [
+            TranscriptItem(role: .user, title: "You", body: "A", timestamp: now),
+            TranscriptItem(role: .assistant, title: "A", body: "B", timestamp: now.addingTimeInterval(60)),
+        ]
+        XCTAssertEqual(TranscriptAnalytics.timeSpan(of: items), 60, accuracy: 0.1)
+    }
+
+    func testTimeSpanEmpty() {
+        XCTAssertEqual(TranscriptAnalytics.timeSpan(of: []), 0)
+    }
+}
+
+// MARK: - DuckDB top N by column
+
+final class DuckDBTopNByColumnTests: XCTestCase {
+    func testTopNByColumnFromTable() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "top 10 by price from trades", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("ORDER BY price DESC"))
+        XCTAssertTrue(plan.sql.contains("LIMIT 10"))
+        XCTAssertTrue(plan.sql.contains("FROM trades"))
+    }
+
+    func testExtractTopNByColumn() {
+        let result = AssistantPlanner.extractTopNByColumn(from: "top 5 by volume in orders")
+        XCTAssertEqual(result?.table, "orders")
+        XCTAssertEqual(result?.column, "volume")
+        XCTAssertEqual(result?.limit, 5)
+    }
+
+    func testExtractTopNByColumnNoMatch() {
+        XCTAssertNil(AssistantPlanner.extractTopNByColumn(from: "show me everything"))
+    }
+
+    func testTopNByColumnAlternatePattern() {
+        let result = AssistantPlanner.extractTopNByColumn(from: "top 3 revenue from sales")
+        XCTAssertEqual(result?.table, "sales")
+        XCTAssertEqual(result?.column, "revenue")
+        XCTAssertEqual(result?.limit, 3)
+    }
+}
+

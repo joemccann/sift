@@ -113,6 +113,34 @@ public struct TranscriptItem: Identifiable, Equatable, Sendable, Codable {
     }
 }
 
+public enum TranscriptAnalytics {
+    /// Total word count across all transcript items
+    public static func wordCount(in items: [TranscriptItem]) -> Int {
+        items.reduce(0) { total, item in
+            total + item.body.split(whereSeparator: \.isWhitespace).count
+        }
+    }
+
+    /// Total character count across all transcript items
+    public static func characterCount(in items: [TranscriptItem]) -> Int {
+        items.reduce(0) { total, item in
+            total + item.body.count
+        }
+    }
+
+    /// Average words per message
+    public static func averageWordsPerMessage(in items: [TranscriptItem]) -> Double {
+        guard !items.isEmpty else { return 0 }
+        return Double(wordCount(in: items)) / Double(items.count)
+    }
+
+    /// Time span of the transcript (first to last timestamp)
+    public static func timeSpan(of items: [TranscriptItem]) -> TimeInterval {
+        guard let first = items.first?.timestamp, let last = items.last?.timestamp else { return 0 }
+        return last.timeIntervalSince(first)
+    }
+}
+
 public enum MarkdownDetector {
     /// Detect if text contains SQL code blocks
     public static func containsSQLBlock(_ text: String) -> Bool {

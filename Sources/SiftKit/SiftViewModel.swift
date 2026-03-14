@@ -28,6 +28,7 @@ public final class SiftViewModel: ObservableObject {
     @Published public private(set) var sources: [DataSource]
     @Published public private(set) var selectedSource: DataSource?
     @Published public private(set) var lastExecution: DuckDBExecutionResult?
+    @Published public private(set) var executionHistory: [QueryExecutionStats] = []
     @Published public private(set) var providerStatuses: [ProviderStatus]
     @Published public private(set) var settings: AppSettings
     @Published public var manualDuckDBArguments = ""
@@ -265,6 +266,44 @@ public final class SiftViewModel: ObservableObject {
                 return false
             }())
         }
+    }
+
+    /// Record an execution for timing stats
+    public func recordExecution(_ result: DuckDBExecutionResult) {
+        let duration = result.endedAt.timeIntervalSince(result.startedAt) * 1000
+        let stats = QueryExecutionStats(
+            sql: result.sql,
+            durationMilliseconds: duration,
+            succeeded: result.exitCode == 0
+        )
+        executionHistory.append(stats)
+    }
+
+    /// Average query execution time in milliseconds
+    public var averageExecutionTimeMs: Double {
+        guard !executionHistory.isEmpty else { return 0 }
+        return executionHistory.reduce(0) { $0 + $1.durationMilliseconds } / Double(executionHistory.count)
+    }
+
+    /// Fastest query execution in the history
+    public var fastestExecutionMs: Double? {
+        executionHistory.map(\.durationMilliseconds).min()
+    }
+
+    /// Success rate of executed queries (0.0 to 1.0)
+    public var executionSuccessRate: Double {
+        guard !executionHistory.isEmpty else { return 0 }
+        let successes = executionHistory.filter(\.succeeded).count
+        return Double(successes) / Double(executionHistory.count)
+    }
+
+    /// Transcript analytics
+    public var transcriptWordCount: Int {
+        TranscriptAnalytics.wordCount(in: transcript)
+    }
+
+    public var transcriptCharacterCount: Int {
+        TranscriptAnalytics.characterCount(in: transcript)
     }
 
     /// Cancel the currently running command

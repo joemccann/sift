@@ -1814,6 +1814,81 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sources.first?.displayName, "data.parquet")
     }
 
+    // MARK: - Execution stats
+
+    func testRecordExecutionTracksStats() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let start = Date()
+        let result = DuckDBExecutionResult(
+            binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT 1;",
+            stdout: "1", stderr: "", exitCode: 0,
+            startedAt: start, endedAt: start.addingTimeInterval(0.1)
+        )
+
+        viewModel.recordExecution(result)
+        XCTAssertEqual(viewModel.executionHistory.count, 1)
+        XCTAssertEqual(viewModel.executionHistory.first?.sql, "SELECT 1;")
+        XCTAssertTrue(viewModel.executionHistory.first?.succeeded == true)
+    }
+
+    func testExecutionSuccessRate() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let start = Date()
+        let success = DuckDBExecutionResult(binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT 1;", stdout: "1", stderr: "", exitCode: 0, startedAt: start, endedAt: start.addingTimeInterval(0.1))
+        let failure = DuckDBExecutionResult(binaryPath: "/usr/bin/duckdb", arguments: [], sql: "BAD;", stdout: "", stderr: "error", exitCode: 1, startedAt: start, endedAt: start.addingTimeInterval(0.05))
+
+        viewModel.recordExecution(success)
+        viewModel.recordExecution(success)
+        viewModel.recordExecution(failure)
+
+        XCTAssertEqual(viewModel.executionSuccessRate, 2.0 / 3.0, accuracy: 0.01)
+    }
+
+    func testAverageExecutionTimeEmpty() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertEqual(viewModel.averageExecutionTimeMs, 0)
+        XCTAssertNil(viewModel.fastestExecutionMs)
+    }
+
+    // MARK: - Transcript analytics on ViewModel
+
+    func testTranscriptWordAndCharacterCount() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .user, title: "You", body: "Hello world"),
+                TranscriptItem(role: .assistant, title: "A", body: "OK"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertEqual(viewModel.transcriptWordCount, 3) // "Hello" "world" "OK"
+        XCTAssertEqual(viewModel.transcriptCharacterCount, 13) // "Hello world" + "OK"
+    }
+
     // MARK: - Provider preference lookup
 
     func testPreferenceDefaultsForAllProviders() {

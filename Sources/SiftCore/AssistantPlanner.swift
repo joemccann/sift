@@ -697,6 +697,16 @@ public enum AssistantPlanner {
             )
         }
 
+        if let topN = extractTopNByColumn(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM \(topN.table) ORDER BY \(topN.column) DESC LIMIT \(topN.limit);",
+                    explanation: "Top \(topN.limit) rows from \(topN.table) ordered by \(topN.column) in \(source.displayName)."
+                )
+            )
+        }
+
         if looksLikeSQL(prompt) {
             return .command(
                 DuckDBCommandPlan(
@@ -790,6 +800,28 @@ public enum AssistantPlanner {
     }
 
     /// Extracts a table name from "count [table]" or "count rows in [table]"
+    /// Extracts "top N by column from table" pattern
+    static func extractTopNByColumn(from lowercased: String) -> (table: String, column: String, limit: Int)? {
+        let patterns = [
+            "top (\\d+) by (\\w+) (?:from|in) (\\w+)",
+            "top (\\d+) (\\w+) (?:from|in) (\\w+)",
+        ]
+
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)),
+               match.numberOfRanges >= 4,
+               let numRange = Range(match.range(at: 1), in: lowercased),
+               let colRange = Range(match.range(at: 2), in: lowercased),
+               let tableRange = Range(match.range(at: 3), in: lowercased),
+               let num = Int(lowercased[numRange]),
+               num > 0, num <= 10000 {
+                return (table: String(lowercased[tableRange]), column: String(lowercased[colRange]), limit: num)
+            }
+        }
+        return nil
+    }
+
     static func extractCountTarget(from lowercased: String) -> String? {
         let patterns = [
             "count rows in (\\w+)",
