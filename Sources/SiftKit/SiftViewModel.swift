@@ -573,6 +573,22 @@ public final class SiftViewModel: ObservableObject {
         transcript.filter { $0.role == role }
     }
 
+    public var userMessageCount: Int {
+        transcript.filter { $0.role == .user }.count
+    }
+
+    public var systemMessageCount: Int {
+        transcript.filter { $0.role == .system }.count
+    }
+
+    public var sortedSourcesByName: [DataSource] {
+        sources.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    }
+
+    public var sortedSourcesByDate: [DataSource] {
+        sources.sorted { $0.addedAt > $1.addedAt }
+    }
+
     public var commandCount: Int {
         transcript.filter {
             if case .commandResult = $0.kind { return true }

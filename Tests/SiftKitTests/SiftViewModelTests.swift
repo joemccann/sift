@@ -1365,6 +1365,59 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.commandCount, 1)
     }
 
+    func testUserAndSystemMessageCounts() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .user, title: "You", body: "Q1"),
+                TranscriptItem(role: .assistant, title: "A", body: "R1"),
+                TranscriptItem(role: .user, title: "You", body: "Q2"),
+                TranscriptItem(role: .system, title: "Sys", body: "Info"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertEqual(viewModel.userMessageCount, 2)
+        XCTAssertEqual(viewModel.systemMessageCount, 1)
+    }
+
+    func testSortedSourcesByName() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/zebra.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/alpha.csv"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/mike.json"))
+
+        let sorted = viewModel.sortedSourcesByName
+        XCTAssertEqual(sorted.map(\.displayName), ["alpha.csv", "mike.json", "zebra.parquet"])
+    }
+
+    func testSortedSourcesByDateMostRecentFirst() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/first.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/second.csv"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/third.json"))
+
+        let sorted = viewModel.sortedSourcesByDate
+        // Most recently added should be first
+        XCTAssertEqual(sorted.first?.displayName, "third.json")
+    }
+
     func testDiagnosticsDrawerStartsClosed() {
         let viewModel = SiftViewModel(
             executor: nil,

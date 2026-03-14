@@ -161,4 +161,39 @@ final class DuckDBAdapterTests: XCTestCase {
         let args = try DuckDBRawArgumentParser.parse(#"'hello\world'"#)
         XCTAssertEqual(args, [#"hello\world"#])
     }
+
+    func testParserAdjacentQuotedStrings() throws {
+        let args = try DuckDBRawArgumentParser.parse(#"'hello'"world""#)
+        XCTAssertEqual(args, ["helloworld"])
+    }
+
+    func testParserTabSeparated() throws {
+        let args = try DuckDBRawArgumentParser.parse("a\tb\tc")
+        XCTAssertEqual(args, ["a", "b", "c"])
+    }
+
+    func testParserNewlineSeparated() throws {
+        let args = try DuckDBRawArgumentParser.parse("a\nb\nc")
+        XCTAssertEqual(args, ["a", "b", "c"])
+    }
+
+    func testParserMultipleSpacesBetweenArgs() throws {
+        let args = try DuckDBRawArgumentParser.parse("hello   world   foo")
+        XCTAssertEqual(args, ["hello", "world", "foo"])
+    }
+
+    func testExecutionRequestSQLFieldIsSet() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let plan = DuckDBCommandPlan(source: source, sql: "SELECT 42;", explanation: "Test")
+        let request = DuckDBCLIExecutor.request(for: plan, binaryPath: "/usr/bin/duckdb")
+        XCTAssertEqual(request.sql, "SELECT 42;")
+        XCTAssertEqual(request.source, source)
+        XCTAssertEqual(request.binaryPath, "/usr/bin/duckdb")
+    }
+
+    func testExecutionRequestRawHasNilSource() {
+        let request = DuckDBCLIExecutor.request(forRawArguments: ["-c", "SELECT 1;"], binaryPath: "/usr/bin/duckdb")
+        XCTAssertNil(request.source)
+        XCTAssertEqual(request.binaryPath, "/usr/bin/duckdb")
+    }
 }
