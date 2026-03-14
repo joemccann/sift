@@ -629,6 +629,16 @@ public enum AssistantPlanner {
             )
         }
 
+        if let tableName = extractPreviewTarget(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM \(tableName) LIMIT 25;",
+                    explanation: "Previewing rows from \(tableName) in \(source.displayName)."
+                )
+            )
+        }
+
         if lowercased.contains("describe") || lowercased.contains("schema") {
             return .command(
                 DuckDBCommandPlan(
@@ -679,6 +689,32 @@ public enum AssistantPlanner {
             .first?
             .lowercased() ?? ""
         return keywords.contains(firstToken)
+    }
+
+    /// Extracts a table name from "preview [table]" or "show [table]"
+    static func extractPreviewTarget(from lowercased: String) -> String? {
+        let patterns = [
+            "preview (\\w+)",
+            "show (\\w+) rows",
+            "head (\\w+)",
+        ]
+        let reservedWords: Set<String> = [
+            "the", "this", "me", "a", "all", "my", "schema", "tables", "columns",
+            "views", "indexes", "indices", "rows", "data", "info", "database",
+            "settings", "extensions", "version", "memory", "installed",
+        ]
+
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)),
+               let nameRange = Range(match.range(at: 1), in: lowercased) {
+                let name = String(lowercased[nameRange])
+                if !reservedWords.contains(name), name.count > 1 {
+                    return name
+                }
+            }
+        }
+        return nil
     }
 
     /// Extracts a table name from "describe [table]" or "describe the [table] table"

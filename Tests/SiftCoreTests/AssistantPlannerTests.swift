@@ -1470,6 +1470,44 @@ final class CommandRegistryTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB preview [tablename]
+
+final class DuckDBPreviewTableTests: XCTestCase {
+    func testPreviewTradesGeneratesSelect() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "preview trades", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("SELECT * FROM trades"))
+        XCTAssertTrue(plan.sql.contains("LIMIT 25"))
+    }
+
+    func testPreviewReservedWordFallsThrough() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        // "preview the" should NOT match as table "the"
+        let action = AssistantPlanner.plan(prompt: "preview the data", source: source)
+
+        // Should not be a command with "SELECT * FROM the"
+        if case let .command(plan) = action {
+            XCTAssertFalse(plan.sql.contains("FROM the "), "Should not use 'the' as table name")
+        }
+    }
+
+    func testExtractPreviewTargetReturnsTableName() {
+        XCTAssertEqual(AssistantPlanner.extractPreviewTarget(from: "preview orders"), "orders")
+        XCTAssertEqual(AssistantPlanner.extractPreviewTarget(from: "head users"), "users")
+    }
+
+    func testExtractPreviewTargetRejectsReserved() {
+        XCTAssertNil(AssistantPlanner.extractPreviewTarget(from: "preview the"))
+        XCTAssertNil(AssistantPlanner.extractPreviewTarget(from: "preview schema"))
+        XCTAssertNil(AssistantPlanner.extractPreviewTarget(from: "preview tables"))
+    }
+}
+
 // MARK: - /info command
 
 final class InfoCommandTests: XCTestCase {
@@ -1522,8 +1560,9 @@ final class QueryTemplateTests: XCTestCase {
 
     func testQueryTemplateEquality() {
         let id = UUID()
-        let a = QueryTemplate(id: id, name: "Test", sql: "SELECT 1;")
-        let b = QueryTemplate(id: id, name: "Test", sql: "SELECT 1;")
+        let date = Date()
+        let a = QueryTemplate(id: id, name: "Test", sql: "SELECT 1;", createdAt: date)
+        let b = QueryTemplate(id: id, name: "Test", sql: "SELECT 1;", createdAt: date)
         XCTAssertEqual(a, b)
     }
 

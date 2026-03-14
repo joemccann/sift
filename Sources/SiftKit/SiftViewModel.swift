@@ -679,6 +679,32 @@ public final class SiftViewModel: ObservableObject {
         }.count
     }
 
+    /// Group sources by their kind
+    public var sourcesByKind: [DataSourceKind: [DataSource]] {
+        Dictionary(grouping: sources, by: \.kind)
+    }
+
+    /// Filter transcript items by kind
+    public func transcriptItems(matching kind: TranscriptKind) -> [TranscriptItem] {
+        transcript.filter { $0.kind == kind }
+    }
+
+    /// All command previews in the transcript
+    public var commandPreviews: [TranscriptItem] {
+        transcript.filter {
+            if case .commandPreview = $0.kind { return true }
+            return false
+        }
+    }
+
+    /// All command results in the transcript
+    public var commandResults: [TranscriptItem] {
+        transcript.filter {
+            if case .commandResult = $0.kind { return true }
+            return false
+        }
+    }
+
     public func searchTranscript(query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searchQuery = trimmed

@@ -1631,6 +1631,70 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
     }
 
+    // MARK: - Source grouping
+
+    func testSourcesByKindGroupsCorrectly() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/c.csv"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/d.json"))
+
+        let grouped = viewModel.sourcesByKind
+        XCTAssertEqual(grouped[.parquet]?.count, 2)
+        XCTAssertEqual(grouped[.csv]?.count, 1)
+        XCTAssertEqual(grouped[.json]?.count, 1)
+        XCTAssertNil(grouped[.duckdb])
+    }
+
+    // MARK: - Command previews and results
+
+    func testCommandPreviewsAndResultsEmpty() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertTrue(viewModel.commandPreviews.isEmpty)
+        XCTAssertTrue(viewModel.commandResults.isEmpty)
+    }
+
+    func testCommandPreviewsAfterExecution() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "SELECT 1;"],
+            sql: "SELECT 1;",
+            stdout: "1\n",
+            stderr: "",
+            exitCode: 0,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+        await viewModel.triggerPrompt("Preview this parquet file")
+
+        XCTAssertFalse(viewModel.commandPreviews.isEmpty)
+        XCTAssertFalse(viewModel.commandResults.isEmpty)
+    }
+
     // MARK: - Pinning
 
     func testTogglePinOnTranscriptItem() {
