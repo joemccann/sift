@@ -39,6 +39,16 @@ public struct SiftRootView: View {
                 }
                 .accessibilityLabel("Toggle Diagnostics")
                 .accessibilityIdentifier("toolbar-toggle-diagnostics")
+
+                Button {
+                    viewModel.clearConversation()
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                }
+                .help("Clear conversation")
+                .accessibilityLabel("Clear Conversation")
+                .accessibilityIdentifier("toolbar-clear-conversation")
+                .disabled(viewModel.transcript.count <= 1)
             }
 
             ToolbarItem(placement: .principal) {
