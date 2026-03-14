@@ -211,6 +211,9 @@ public final class ProviderChatService: ProviderResponding, @unchecked Sendable 
     private func preparedEnvironment(for provider: ProviderKind, authMode: ProviderAuthMode) -> [String: String] {
         var environment = baseEnvironment
 
+        // Prevent Claude CLI from detecting a nested session when Sift is launched from Claude Code.
+        environment.removeValue(forKey: "CLAUDECODE")
+
         if authMode == .localCLI {
             for key in provider.apiKeyEnvironmentNames {
                 environment.removeValue(forKey: key)

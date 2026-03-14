@@ -122,6 +122,31 @@ final class ProviderChatServiceTests: XCTestCase {
         )
     }
 
+    func testCLAUDECODEEnvVarIsStrippedFromSubprocess() async throws {
+        let executor = CapturingProcessExecutor()
+        executor.handler = { _, _, environment in
+            XCTAssertNil(environment["CLAUDECODE"], "CLAUDECODE must be removed to avoid nested-session error")
+            return ProcessExecutionResult(stdout: #"{"result":"OK"}"#, stderr: "", exitCode: 0)
+        }
+
+        let service = ProviderChatService(
+            processExecutor: executor,
+            secretStore: MemorySecretStore(),
+            baseEnvironment: ["CLAUDECODE": "1", "PATH": "/usr/bin"]
+        )
+
+        var settings = AppSettings(hasCompletedSetup: true, defaultProvider: .claude)
+        settings.setPreference(ProviderPreference(authMode: .localCLI, customModel: ""), for: .claude)
+
+        _ = try await service.respond(
+            prompt: "Test",
+            source: nil,
+            transcript: [],
+            settings: settings,
+            providerStatuses: [ProviderStatus(provider: .claude, cliInstalled: true, cliPath: "/usr/bin/claude", apiKeyPresent: false, environmentKeyPresent: false)]
+        )
+    }
+
     func testCodexReadsLastMessageFile() async throws {
         let executor = CapturingProcessExecutor()
         executor.handler = { _, arguments, _ in
