@@ -100,6 +100,20 @@ public struct BookmarkedCommand: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+public enum AppAppearance: String, Codable, Sendable, CaseIterable {
+    case system
+    case light
+    case dark
+
+    public var displayName: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+}
+
 public struct QueryTemplate: Codable, Equatable, Sendable, Identifiable {
     public let id: UUID
     public let name: String
@@ -120,19 +134,22 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var providerPreferences: [String: ProviderPreference]
     public var bookmarks: [BookmarkedCommand]
     public var queryTemplates: [QueryTemplate]
+    public var preferredAppearance: AppAppearance
 
     public init(
         hasCompletedSetup: Bool = false,
         defaultProvider: ProviderKind = .claude,
         providerPreferences: [String: ProviderPreference] = [:],
         bookmarks: [BookmarkedCommand] = [],
-        queryTemplates: [QueryTemplate] = []
+        queryTemplates: [QueryTemplate] = [],
+        preferredAppearance: AppAppearance = .system
     ) {
         self.hasCompletedSetup = hasCompletedSetup
         self.defaultProvider = defaultProvider
         self.providerPreferences = providerPreferences
         self.bookmarks = bookmarks
         self.queryTemplates = queryTemplates
+        self.preferredAppearance = preferredAppearance
     }
 
     public func preference(for provider: ProviderKind) -> ProviderPreference {

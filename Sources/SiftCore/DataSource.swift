@@ -63,6 +63,16 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
         url.path
     }
 
+    /// Check if the source file exists on disk
+    public var fileExists: Bool {
+        FileManager.default.fileExists(atPath: path)
+    }
+
+    /// Check if the source file is readable
+    public var isReadable: Bool {
+        FileManager.default.isReadableFile(atPath: path)
+    }
+
     public var fileSizeDescription: String {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
               let size = attrs[.size] as? Int64 else {

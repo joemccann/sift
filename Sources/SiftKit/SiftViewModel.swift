@@ -165,6 +165,34 @@ public final class SiftViewModel: ObservableObject {
         CommandRegistry.completions(for: composerText)
     }
 
+    /// Sources that no longer exist on disk
+    public var missingSources: [DataSource] {
+        sources.filter { !$0.fileExists }
+    }
+
+    /// Validate all sources and remove missing ones
+    public func removeMissingSources() -> Int {
+        let missing = missingSources
+        guard !missing.isEmpty else { return 0 }
+
+        for source in missing {
+            sources.removeAll(where: { $0.id == source.id })
+        }
+        if let selectedSource, !sources.contains(where: { $0.id == selectedSource.id }) {
+            self.selectedSource = sources.first
+        }
+
+        appendTranscript(
+            TranscriptItem(
+                role: .system,
+                title: "Sources Cleaned",
+                body: "Removed \(missing.count) source\(missing.count == 1 ? "" : "s") that no longer exist on disk."
+            )
+        )
+        persistSnapshot()
+        return missing.count
+    }
+
     /// Pinned transcript items
     public var pinnedItems: [TranscriptItem] {
         transcript.filter(\.isPinned)
@@ -738,6 +766,21 @@ public final class SiftViewModel: ObservableObject {
             if case .commandPreview = $0.kind { return true }
             return false
         }
+    }
+
+    /// Brief summary of the transcript
+    public var transcriptSummary: String {
+        let userCount = userMessageCount
+        let commandCount = self.commandCount
+        let successCount = transcript.filter {
+            if case let .commandResult(exitCode, _, _) = $0.kind { return exitCode == 0 }
+            return false
+        }.count
+        let failureCount = transcript.filter {
+            if case let .commandResult(exitCode, _, _) = $0.kind { return exitCode != 0 }
+            return false
+        }.count
+        return "\(transcript.count) items, \(userCount) user messages, \(commandCount) commands (\(successCount) ✓, \(failureCount) ✗)"
     }
 
     /// All command results in the transcript

@@ -1631,6 +1631,73 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
     }
 
+    // MARK: - Source validation
+
+    func testMissingSourcesDetectsNonexistentFiles() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/nonexistent/path/data.parquet"))
+        XCTAssertEqual(viewModel.missingSources.count, 1)
+    }
+
+    func testRemoveMissingSourcesCleansUp() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/nonexistent/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/nonexistent/b.csv"))
+        XCTAssertEqual(viewModel.sources.count, 2)
+
+        let removed = viewModel.removeMissingSources()
+        XCTAssertEqual(removed, 2)
+        XCTAssertTrue(viewModel.sources.isEmpty)
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "Sources Cleaned" }))
+    }
+
+    func testRemoveMissingSourcesWithNoMissing() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let removed = viewModel.removeMissingSources()
+        XCTAssertEqual(removed, 0)
+    }
+
+    // MARK: - Transcript summary
+
+    func testTranscriptSummaryFormatted() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .user, title: "You", body: "Hello"),
+                TranscriptItem(role: .assistant, title: "A", body: "World"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let summary = viewModel.transcriptSummary
+        XCTAssertTrue(summary.contains("2 items"))
+        XCTAssertTrue(summary.contains("1 user messages"))
+        XCTAssertTrue(summary.contains("0 commands"))
+    }
+
     // MARK: - Reset workspace
 
     func testResetClearsEverything() async {

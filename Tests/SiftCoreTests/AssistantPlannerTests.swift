@@ -1835,6 +1835,61 @@ final class DuckDBCountTableTests: XCTestCase {
     }
 }
 
+// MARK: - AppAppearance
+
+final class AppAppearanceTests: XCTestCase {
+    func testDisplayNames() {
+        XCTAssertEqual(AppAppearance.system.displayName, "System")
+        XCTAssertEqual(AppAppearance.light.displayName, "Light")
+        XCTAssertEqual(AppAppearance.dark.displayName, "Dark")
+    }
+
+    func testAllCases() {
+        XCTAssertEqual(AppAppearance.allCases.count, 3)
+    }
+
+    func testCodableRoundTrip() throws {
+        for appearance in AppAppearance.allCases {
+            let data = try JSONEncoder().encode(appearance)
+            let restored = try JSONDecoder().decode(AppAppearance.self, from: data)
+            XCTAssertEqual(restored, appearance)
+        }
+    }
+
+    func testSettingsWithAppearanceCodableRoundTrip() throws {
+        var settings = AppSettings(hasCompletedSetup: true, preferredAppearance: .dark)
+        let data = try JSONEncoder().encode(settings)
+        let restored = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(restored.preferredAppearance, .dark)
+    }
+
+    func testDefaultAppearanceIsSystem() {
+        let settings = AppSettings()
+        XCTAssertEqual(settings.preferredAppearance, .system)
+    }
+}
+
+// MARK: - DataSource validation
+
+final class DataSourceValidationTests: XCTestCase {
+    func testFileExistsForMissingFile() {
+        let source = DataSource(url: URL(fileURLWithPath: "/nonexistent/path/data.parquet"), kind: .parquet)
+        XCTAssertFalse(source.fileExists)
+        XCTAssertFalse(source.isReadable)
+    }
+
+    func testFileExistsForRealFile() throws {
+        let tmpPath = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".csv")
+        try "a,b\n1,2".write(to: tmpPath, atomically: true, encoding: .utf8)
+
+        let source = DataSource(url: tmpPath, kind: .csv)
+        XCTAssertTrue(source.fileExists)
+        XCTAssertTrue(source.isReadable)
+
+        try? FileManager.default.removeItem(at: tmpPath)
+    }
+}
+
 // MARK: - CommandRegistry count
 
 final class CommandRegistryCountTests: XCTestCase {
