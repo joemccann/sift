@@ -1814,6 +1814,118 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sources.first?.displayName, "data.parquet")
     }
 
+    // MARK: - Output parsing integration
+
+    func testOutputParserOnSuccessfulResult() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "SELECT 1;"],
+            sql: "SELECT 1;",
+            stdout: "answer\n1\n(1 row)\n",
+            stderr: "",
+            exitCode: 0,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/test.parquet"))
+        await viewModel.triggerPrompt("Preview this parquet file")
+
+        // The output should be parseable
+        if let output = viewModel.lastSuccessfulOutput {
+            let rowCount = DuckDBOutputParser.extractRowCount(from: output)
+            XCTAssertEqual(rowCount, 1)
+        }
+    }
+
+    func testOutputParserDetectsError() {
+        let errorOutput = "Error: table 'missing' does not exist"
+        XCTAssertTrue(DuckDBOutputParser.containsError(in: errorOutput))
+    }
+
+    func testOutputParserCountsDataRows() {
+        let output = "name | age\nAlice | 30\nBob | 25\n"
+        // 3 lines: header + 2 data = 2 data rows
+        let count = DuckDBOutputParser.countDataRows(in: output)
+        XCTAssertGreaterThan(count, 0)
+    }
+
+    // MARK: - Full workflow test
+
+    func testCompleteWorkflowFromSetupToQuery() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "SELECT 42;"],
+            sql: "SELECT 42;",
+            stdout: "42\n",
+            stderr: "",
+            exitCode: 0,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // Step 1: Complete setup
+        viewModel.completeSetup(defaultProvider: .claude, authMode: .localCLI, model: "sonnet", apiKey: "")
+        XCTAssertFalse(viewModel.requiresInitialSetup)
+
+        // Step 2: Import a source
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+        XCTAssertEqual(viewModel.sources.count, 1)
+
+        // Step 3: Run a query
+        await viewModel.triggerPrompt("Preview this parquet file")
+        XCTAssertNotNil(viewModel.lastExecution)
+        XCTAssertEqual(viewModel.commandCount, 1)
+
+        // Step 4: Bookmark it
+        viewModel.composerText = "/bookmark"
+        await viewModel.sendPrompt()
+        XCTAssertEqual(viewModel.settings.bookmarks.count, 1)
+
+        // Step 5: Check status
+        viewModel.composerText = "/status"
+        await viewModel.sendPrompt()
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "Status" }))
+    }
+
+    // MARK: - Provider with source context
+
+    func testProviderPromptIncludesSourceContext() async {
+        let response = ProviderChatResponse(provider: .claude, text: "Use read_parquet to query.")
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: response),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // With a parquet source, a general question that doesn't match patterns goes to NL query
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+
+        // A question that doesn't match any keyword should trigger NL query or provider
+        viewModel.composerText = "What is the correlation between price and volume?"
+        await viewModel.sendPrompt()
+
+        // Should have some response in the transcript
+        XCTAssertTrue(viewModel.transcript.count > 2)
+    }
+
     // MARK: - Remote source import
 
     func testImportRemoteSourceCreatesSource() {

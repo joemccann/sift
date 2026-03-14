@@ -2711,6 +2711,55 @@ final class DuckDBOutputParserTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB output parser edge cases
+
+final class DuckDBOutputParserEdgeCaseTests: XCTestCase {
+    func testExtractRowCountFromLargeNumber() {
+        XCTAssertEqual(DuckDBOutputParser.extractRowCount(from: "1000000 rows"), 1_000_000)
+    }
+
+    func testContainsErrorForSyntaxError() {
+        XCTAssertTrue(DuckDBOutputParser.containsError(in: "syntax error at position 5"))
+    }
+
+    func testContainsErrorForCleanOutput() {
+        XCTAssertFalse(DuckDBOutputParser.containsError(in: "name\nAlice\nBob"))
+    }
+
+    func testCountDataRowsSingleLine() {
+        XCTAssertEqual(DuckDBOutputParser.countDataRows(in: "header\ndata"), 1)
+    }
+
+    func testCountDataRowsOnlyHeader() {
+        // Single non-empty line → treated as header, 0 data rows
+        XCTAssertEqual(DuckDBOutputParser.countDataRows(in: "header"), 0)
+    }
+}
+
+// MARK: - DataSource remote query
+
+final class DataSourceRemoteQueryTests: XCTestCase {
+    func testRemoteParquetReadExpression() {
+        let source = DataSource.fromRemoteURL("https://data.example.com/prices.parquet")
+        XCTAssertNotNil(source?.duckDBReadExpression)
+        XCTAssertTrue(source?.duckDBReadExpression?.contains("read_parquet") == true)
+        XCTAssertTrue(source?.duckDBReadExpression?.contains("https://") == true)
+    }
+
+    func testRemoteCSVSelectQuery() {
+        let source = DataSource.fromRemoteURL("https://data.example.com/trades.csv")
+        let sql = source?.selectQuery(limit: 10)
+        XCTAssertTrue(sql?.contains("read_csv") == true)
+        XCTAssertTrue(sql?.contains("LIMIT 10") == true)
+    }
+
+    func testRemoteJSONCountQuery() {
+        let source = DataSource.fromRemoteURL("https://api.example.com/data.json")
+        let sql = source?.countQuery()
+        XCTAssertTrue(sql?.contains("COUNT(*)") == true)
+    }
+}
+
 // MARK: - DuckDB WHERE filter
 
 final class DuckDBWhereFilterTests: XCTestCase {

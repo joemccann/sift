@@ -107,8 +107,9 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
     /// The DuckDB read expression for this source (e.g., "read_parquet('/path/to/file.parquet')")
     public var duckDBReadExpression: String? {
         guard let readFn = kind.readFunction else { return nil }
-        let escapedPath = path.replacingOccurrences(of: "'", with: "''")
-        return "\(readFn)('\(escapedPath)')"
+        let location = isRemote ? url.absoluteString : path
+        let escaped = location.replacingOccurrences(of: "'", with: "''")
+        return "\(readFn)('\(escaped)')"
     }
 
     /// Build a SELECT query for this source with optional limit
