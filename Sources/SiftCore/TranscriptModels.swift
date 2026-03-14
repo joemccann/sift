@@ -113,6 +113,36 @@ public struct TranscriptItem: Identifiable, Equatable, Sendable, Codable {
     }
 }
 
+public enum MarkdownDetector {
+    /// Detect if text contains SQL code blocks
+    public static func containsSQLBlock(_ text: String) -> Bool {
+        text.contains("```sql") || text.contains("```SQL")
+    }
+
+    /// Detect if text contains any fenced code blocks
+    public static func containsCodeBlock(_ text: String) -> Bool {
+        text.contains("```")
+    }
+
+    /// Extract the first code block content from markdown text
+    public static func extractFirstCodeBlock(from text: String) -> String? {
+        let pattern = "```(?:\\w+)?\\s*\\n([\\s\\S]*?)\\n\\s*```"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let contentRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return String(text[contentRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Count the number of code blocks in text
+    public static func codeBlockCount(in text: String) -> Int {
+        let pattern = "```(?:\\w+)?\\s*\\n[\\s\\S]*?\\n\\s*```"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return 0 }
+        return regex.numberOfMatches(in: text, range: NSRange(text.startIndex..., in: text))
+    }
+}
+
 public struct PromptChip: Identifiable, Equatable, Sendable {
     public let id: UUID
     public let title: String

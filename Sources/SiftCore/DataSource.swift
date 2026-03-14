@@ -94,6 +94,16 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
         }
     }
 
+    /// File extension of this source
+    public var fileExtension: String {
+        url.pathExtension.lowercased()
+    }
+
+    /// Parent directory name
+    public var directoryName: String {
+        url.deletingLastPathComponent().lastPathComponent
+    }
+
     /// The DuckDB read expression for this source (e.g., "read_parquet('/path/to/file.parquet')")
     public var duckDBReadExpression: String? {
         guard let readFn = kind.readFunction else { return nil }

@@ -2185,5 +2185,81 @@ final class DataSourceAliasTests: XCTestCase {
         XCTAssertNil(restored.alias)
         XCTAssertEqual(restored.displayName, "data.json")
     }
+
+    func testFileExtension() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.PARQUET"), kind: .parquet)
+        XCTAssertEqual(source.fileExtension, "parquet")
+    }
+
+    func testDirectoryName() {
+        let source = DataSource(url: URL(fileURLWithPath: "/Users/joe/data/prices.parquet"), kind: .parquet)
+        XCTAssertEqual(source.directoryName, "data")
+    }
+}
+
+// MARK: - MarkdownDetector
+
+final class MarkdownDetectorTests: XCTestCase {
+    func testContainsSQLBlock() {
+        let text = "Here:\n```sql\nSELECT 1;\n```"
+        XCTAssertTrue(MarkdownDetector.containsSQLBlock(text))
+        XCTAssertTrue(MarkdownDetector.containsCodeBlock(text))
+    }
+
+    func testDoesNotContainSQLBlock() {
+        let text = "Just plain text without any code."
+        XCTAssertFalse(MarkdownDetector.containsSQLBlock(text))
+        XCTAssertFalse(MarkdownDetector.containsCodeBlock(text))
+    }
+
+    func testExtractFirstCodeBlock() {
+        let text = """
+        Some text.
+        ```sql
+        SELECT * FROM trades;
+        ```
+        More text.
+        """
+        let extracted = MarkdownDetector.extractFirstCodeBlock(from: text)
+        XCTAssertEqual(extracted, "SELECT * FROM trades;")
+    }
+
+    func testExtractCodeBlockWithNoLanguage() {
+        let text = """
+        ```
+        hello world
+        ```
+        """
+        let extracted = MarkdownDetector.extractFirstCodeBlock(from: text)
+        XCTAssertEqual(extracted, "hello world")
+    }
+
+    func testExtractCodeBlockReturnsNilForNoBlocks() {
+        let text = "No code blocks here."
+        XCTAssertNil(MarkdownDetector.extractFirstCodeBlock(from: text))
+    }
+
+    func testCodeBlockCount() {
+        let text = """
+        ```sql
+        SELECT 1;
+        ```
+        Text.
+        ```python
+        print("hello")
+        ```
+        """
+        XCTAssertEqual(MarkdownDetector.codeBlockCount(in: text), 2)
+    }
+
+    func testCodeBlockCountZero() {
+        XCTAssertEqual(MarkdownDetector.codeBlockCount(in: "no blocks"), 0)
+    }
+
+    func testContainsCodeBlockWithGenericFence() {
+        let text = "```\nsome code\n```"
+        XCTAssertTrue(MarkdownDetector.containsCodeBlock(text))
+        XCTAssertFalse(MarkdownDetector.containsSQLBlock(text))
+    }
 }
 
