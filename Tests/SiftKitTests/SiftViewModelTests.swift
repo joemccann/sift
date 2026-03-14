@@ -1631,6 +1631,100 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
     }
 
+    // MARK: - DuckDB run with source context
+
+    func testRawDuckDBCommandWithExecutorExecutes() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: ["--version"],
+            sql: "",
+            stdout: "v1.0.0",
+            stderr: "",
+            exitCode: 0,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.manualDuckDBArguments = "--version"
+        await viewModel.runRawDuckDBCommand()
+
+        XCTAssertEqual(viewModel.lastExecution?.stdout, "v1.0.0")
+        XCTAssertEqual(viewModel.manualDuckDBArguments, "")
+    }
+
+    func testSendPromptWithSQLCommand() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "SELECT 42 AS answer;"],
+            sql: "SELECT 42 AS answer;",
+            stdout: "42\n",
+            stderr: "",
+            exitCode: 0,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"))
+
+        viewModel.composerText = "/sql SELECT 42 AS answer;"
+        await viewModel.sendPrompt()
+
+        XCTAssertEqual(viewModel.lastExecution?.stdout, "42\n")
+    }
+
+    func testSendSQLWithoutSourceShowsGuidance() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/sql SELECT 1;"
+        await viewModel.sendPrompt()
+
+        // Without a source, /sql should tell user to open a source
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.body.contains("Open a local") || $0.body.contains("source") }))
+    }
+
+    func testMultipleImportAndRemoveWorkflow() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.csv"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/c.json"))
+        XCTAssertEqual(viewModel.sources.count, 3)
+
+        viewModel.removeSource(viewModel.sources.first(where: { $0.displayName == "b.csv" })!)
+        XCTAssertEqual(viewModel.sources.count, 2)
+
+        viewModel.removeAllSources()
+        XCTAssertTrue(viewModel.sources.isEmpty)
+        XCTAssertNil(viewModel.selectedSource)
+    }
+
     // MARK: - Session export
 
     func testExportSessionAsJSONReturnsValidJSON() {
