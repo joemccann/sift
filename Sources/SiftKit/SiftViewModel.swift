@@ -205,6 +205,50 @@ public final class SiftViewModel: ObservableObject {
         persistSnapshot()
     }
 
+    /// Add a tag to a transcript item
+    public func addTag(_ tag: String, to itemID: UUID) {
+        guard let index = transcript.firstIndex(where: { $0.id == itemID }) else { return }
+        let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !transcript[index].tags.contains(trimmed) else { return }
+        transcript[index].tags.append(trimmed)
+        persistSnapshot()
+    }
+
+    /// Remove a tag from a transcript item
+    public func removeTag(_ tag: String, from itemID: UUID) {
+        guard let index = transcript.firstIndex(where: { $0.id == itemID }) else { return }
+        transcript[index].tags.removeAll(where: { $0 == tag })
+        persistSnapshot()
+    }
+
+    /// Find transcript items with a specific tag
+    public func transcriptItems(withTag tag: String) -> [TranscriptItem] {
+        transcript.filter { $0.tags.contains(tag) }
+    }
+
+    /// All unique tags used across the transcript
+    public var allTags: [String] {
+        Array(Set(transcript.flatMap(\.tags))).sorted()
+    }
+
+    /// Set an alias for a source
+    public func setSourceAlias(_ alias: String?, for sourceID: UUID) {
+        guard let index = sources.firstIndex(where: { $0.id == sourceID }) else { return }
+        sources[index].alias = alias?.trimmingCharacters(in: .whitespacesAndNewlines)
+        persistSnapshot()
+    }
+
+    /// Compact transcript — only user messages and command results
+    public var compactTranscript: [TranscriptItem] {
+        transcript.filter { item in
+            item.role == .user ||
+            (item.role == .assistant && {
+                if case .commandResult = item.kind { return true }
+                return false
+            }())
+        }
+    }
+
     /// Cancel the currently running command
     public func cancelRunningCommand() {
         guard isRunning else { return }

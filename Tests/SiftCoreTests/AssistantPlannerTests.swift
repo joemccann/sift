@@ -2124,3 +2124,66 @@ final class CommandRegistryCountTests: XCTestCase {
     }
 }
 
+// MARK: - TranscriptItem tags
+
+final class TranscriptItemTagTests: XCTestCase {
+    func testDefaultTagsIsEmpty() {
+        let item = TranscriptItem(role: .assistant, title: "A", body: "Hello")
+        XCTAssertTrue(item.tags.isEmpty)
+    }
+
+    func testTagsCodableRoundTrip() throws {
+        let item = TranscriptItem(role: .user, title: "You", body: "Q", tags: ["important", "sql"])
+        let data = try JSONEncoder().encode(item)
+        let restored = try JSONDecoder().decode(TranscriptItem.self, from: data)
+        XCTAssertEqual(restored.tags, ["important", "sql"])
+    }
+
+    func testItemWithTagsEquality() {
+        let id = UUID()
+        let date = Date()
+        let a = TranscriptItem(id: id, role: .user, title: "You", body: "Q", timestamp: date, tags: ["x"])
+        let b = TranscriptItem(id: id, role: .user, title: "You", body: "Q", timestamp: date, tags: ["x"])
+        XCTAssertEqual(a, b)
+    }
+
+    func testItemWithDifferentTagsAreNotEqual() {
+        let id = UUID()
+        let date = Date()
+        let a = TranscriptItem(id: id, role: .user, title: "You", body: "Q", timestamp: date, tags: ["x"])
+        let b = TranscriptItem(id: id, role: .user, title: "You", body: "Q", timestamp: date, tags: ["y"])
+        XCTAssertNotEqual(a, b)
+    }
+}
+
+// MARK: - DataSource alias
+
+final class DataSourceAliasTests: XCTestCase {
+    func testDefaultAliasIsNil() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        XCTAssertNil(source.alias)
+        XCTAssertEqual(source.displayName, "data.parquet")
+    }
+
+    func testAliasOverridesDisplayName() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet, alias: "Prices")
+        XCTAssertEqual(source.displayName, "Prices")
+    }
+
+    func testAliasCodableRoundTrip() throws {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv, alias: "My Data")
+        let data = try JSONEncoder().encode(source)
+        let restored = try JSONDecoder().decode(DataSource.self, from: data)
+        XCTAssertEqual(restored.alias, "My Data")
+        XCTAssertEqual(restored.displayName, "My Data")
+    }
+
+    func testNilAliasCodableRoundTrip() throws {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let data = try JSONEncoder().encode(source)
+        let restored = try JSONDecoder().decode(DataSource.self, from: data)
+        XCTAssertNil(restored.alias)
+        XCTAssertEqual(restored.displayName, "data.json")
+    }
+}
+

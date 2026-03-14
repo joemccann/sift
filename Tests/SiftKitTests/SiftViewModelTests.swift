@@ -1631,6 +1631,189 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
     }
 
+    // MARK: - Tagging
+
+    func testAddTagToTranscriptItem() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let itemID = viewModel.transcript.first!.id
+        viewModel.addTag("important", to: itemID)
+
+        XCTAssertEqual(viewModel.transcript.first?.tags, ["important"])
+        XCTAssertEqual(viewModel.allTags, ["important"])
+    }
+
+    func testAddDuplicateTagIsIgnored() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let itemID = viewModel.transcript.first!.id
+        viewModel.addTag("sql", to: itemID)
+        viewModel.addTag("sql", to: itemID) // duplicate
+
+        XCTAssertEqual(viewModel.transcript.first?.tags.count, 1)
+    }
+
+    func testAddEmptyTagIsIgnored() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let itemID = viewModel.transcript.first!.id
+        viewModel.addTag("  ", to: itemID)
+
+        XCTAssertTrue(viewModel.transcript.first?.tags.isEmpty == true)
+    }
+
+    func testRemoveTag() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello", tags: ["a", "b"]),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let itemID = viewModel.transcript.first!.id
+        viewModel.removeTag("a", from: itemID)
+
+        XCTAssertEqual(viewModel.transcript.first?.tags, ["b"])
+    }
+
+    func testTranscriptItemsWithTag() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello", tags: ["sql"]),
+                TranscriptItem(role: .user, title: "You", body: "World"),
+                TranscriptItem(role: .assistant, title: "A", body: "Result", tags: ["sql", "important"]),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let sqlItems = viewModel.transcriptItems(withTag: "sql")
+        XCTAssertEqual(sqlItems.count, 2)
+
+        let importantItems = viewModel.transcriptItems(withTag: "important")
+        XCTAssertEqual(importantItems.count, 1)
+    }
+
+    func testAllTagsAcrossTranscript() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "A", tags: ["z", "a"]),
+                TranscriptItem(role: .user, title: "You", body: "B", tags: ["b"]),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // allTags should be sorted and deduplicated
+        XCTAssertEqual(viewModel.allTags, ["a", "b", "z"])
+    }
+
+    // MARK: - Source aliases
+
+    func testSetSourceAlias() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+        let sourceID = viewModel.sources.first!.id
+
+        viewModel.setSourceAlias("Prices", for: sourceID)
+        XCTAssertEqual(viewModel.sources.first?.displayName, "Prices")
+    }
+
+    func testClearSourceAlias() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+        let sourceID = viewModel.sources.first!.id
+
+        viewModel.setSourceAlias("Prices", for: sourceID)
+        viewModel.setSourceAlias(nil, for: sourceID)
+        XCTAssertEqual(viewModel.sources.first?.displayName, "data.parquet")
+    }
+
+    // MARK: - Compact transcript
+
+    func testCompactTranscriptFiltersToUserAndResults() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .user, title: "You", body: "Hello"),
+                TranscriptItem(role: .assistant, title: "A", body: "thinking", kind: .thinking),
+                TranscriptItem(role: .assistant, title: "A", body: "preview",
+                               kind: .commandPreview(sql: "SELECT 1;", sourceName: "test")),
+                TranscriptItem(role: .assistant, title: "A", body: "result",
+                               kind: .commandResult(exitCode: 0, stdout: "1", stderr: "")),
+                TranscriptItem(role: .system, title: "Sys", body: "info"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let compact = viewModel.compactTranscript
+        XCTAssertEqual(compact.count, 2) // user message + command result
+        XCTAssertEqual(compact[0].role, .user)
+        XCTAssertEqual(compact[1].body, "result")
+    }
+
+    func testCompactTranscriptEmptyWhenNoUserOrResults() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Welcome"),
+                TranscriptItem(role: .system, title: "Sys", body: "Info"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertTrue(viewModel.compactTranscript.isEmpty)
+    }
+
     // MARK: - DuckDB run with source context
 
     func testRawDuckDBCommandWithExecutorExecutes() async {

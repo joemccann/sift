@@ -42,21 +42,25 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
     public let url: URL
     public let kind: DataSourceKind
     public let addedAt: Date
+    public var alias: String?
 
     public init(
         id: UUID = UUID(),
         url: URL,
         kind: DataSourceKind,
-        addedAt: Date = Date()
+        addedAt: Date = Date(),
+        alias: String? = nil
     ) {
         self.id = id
         self.url = url
         self.kind = kind
         self.addedAt = addedAt
+        self.alias = alias
     }
 
+    /// Returns the alias if set, otherwise the filename
     public var displayName: String {
-        url.lastPathComponent
+        alias ?? url.lastPathComponent
     }
 
     public var path: String {
