@@ -831,6 +831,21 @@ public final class SiftViewModel: ObservableObject {
         return sources.filter { $0.displayName.lowercased().contains(lowered) }
     }
 
+    /// Export the session as a JSON string for backup
+    public func exportSessionAsJSON() -> String? {
+        let snapshot = AppSessionSnapshot(
+            settings: settings,
+            sources: sources,
+            selectedSourceID: selectedSource?.id,
+            transcript: transcript
+        )
+        guard let data = try? JSONEncoder().encode(snapshot),
+              let json = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        return json
+    }
+
     /// Get unique SQL commands that have been executed (deduped)
     public var uniqueCommandHistory: [String] {
         var seen = Set<String>()

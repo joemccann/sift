@@ -1631,6 +1631,45 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
     }
 
+    // MARK: - Session export
+
+    func testExportSessionAsJSONReturnsValidJSON() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let json = viewModel.exportSessionAsJSON()
+        XCTAssertNotNil(json)
+
+        // Verify it's valid JSON by decoding
+        if let json, let data = json.data(using: .utf8) {
+            let restored = try? JSONDecoder().decode(AppSessionSnapshot.self, from: data)
+            XCTAssertNotNil(restored)
+            XCTAssertTrue(restored?.settings.hasCompletedSetup == true)
+        }
+    }
+
+    func testExportSessionPreservesSourcesAndTranscript() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+
+        let json = viewModel.exportSessionAsJSON()
+        XCTAssertNotNil(json)
+        XCTAssertTrue(json?.contains("data.parquet") == true)
+    }
+
     // MARK: - Source search
 
     func testFindSourcesByName() {
