@@ -1452,6 +1452,113 @@ final class SiftViewModelTests: XCTestCase {
 
         XCTAssertFalse(viewModel.isDiagnosticsDrawerPresented)
     }
+
+    func testMetalSnapshotAllDestinations() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.selectedDestination = .assistant
+        XCTAssertEqual(viewModel.metalSnapshot.destination, .assistant)
+
+        viewModel.selectedDestination = .transcripts
+        XCTAssertEqual(viewModel.metalSnapshot.destination, .transcripts)
+
+        viewModel.selectedDestination = .setup
+        XCTAssertEqual(viewModel.metalSnapshot.destination, .setup)
+
+        viewModel.selectedDestination = .settings
+        XCTAssertEqual(viewModel.metalSnapshot.destination, .settings)
+    }
+
+    func testMetalSnapshotFailureState() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "INVALID;"],
+            sql: "INVALID;",
+            stdout: "",
+            stderr: "Error: invalid",
+            exitCode: 1,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+        await viewModel.triggerPrompt("Preview this parquet file")
+
+        XCTAssertEqual(viewModel.metalSnapshot.executionState, .failure)
+    }
+
+    func testMetalSnapshotCommandDurationIsPositive() async {
+        let start = Date()
+        let end = start.addingTimeInterval(0.5) // 500ms
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:"],
+            sql: "SELECT 1;",
+            stdout: "1\n",
+            stderr: "",
+            exitCode: 0,
+            startedAt: start,
+            endedAt: end
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+        await viewModel.triggerPrompt("Preview this parquet file")
+
+        XCTAssertGreaterThan(viewModel.metalSnapshot.commandDurationMilliseconds, 0)
+        XCTAssertGreaterThan(viewModel.metalSnapshot.commandOutputBytes, 0)
+    }
+
+    func testCompleteSetupWithCLIAuthMode() {
+        let sessionStore = MemorySessionStore()
+        let secretStore = MemorySecretStore()
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: sessionStore,
+            secretStore: secretStore,
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.completeSetup(
+            defaultProvider: .claude,
+            authMode: .localCLI,
+            model: "sonnet",
+            apiKey: ""
+        )
+
+        XCTAssertFalse(viewModel.requiresInitialSetup)
+        XCTAssertFalse(viewModel.isSetupFlowPresented)
+        XCTAssertEqual(viewModel.selectedDestination, .assistant)
+        // No API key should be stored for CLI mode with empty key
+        XCTAssertFalse(viewModel.hasStoredAPIKey(for: .claude))
+    }
+
+    func testInitialTranscriptHasWelcomeMessage() {
+        let items = SiftViewModel.initialTranscript
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items.first?.role, .assistant)
+        XCTAssertTrue(items.first?.body.contains("Welcome") == true)
+    }
 }
 
 // MARK: - SidebarDestination
