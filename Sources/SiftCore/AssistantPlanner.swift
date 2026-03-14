@@ -203,6 +203,16 @@ public enum AssistantPlanner {
         let escapedPath = escapeLiteral(source.path)
         let lowercased = prompt.lowercased()
 
+        if lowercased.contains("parquet schema") || lowercased.contains("file schema") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM parquet_schema('\(escapedPath)');",
+                    explanation: "Reading parquet schema metadata from \(source.displayName)."
+                )
+            )
+        }
+
         if lowercased.contains("schema") {
             return .command(
                 DuckDBCommandPlan(
@@ -249,6 +259,16 @@ public enum AssistantPlanner {
                     source: source,
                     sql: "SELECT * FROM read_parquet('\(escapedPath)') LIMIT \(limit);",
                     explanation: "Showing top \(limit) rows from \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("metadata") || lowercased.contains("file info") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM parquet_metadata('\(escapedPath)');",
+                    explanation: "Reading parquet file metadata from \(source.displayName)."
                 )
             )
         }
@@ -597,7 +617,7 @@ public enum AssistantPlanner {
     }
 
     private static func looksLikeSQL(_ prompt: String) -> Bool {
-        let keywords = ["select", "show", "describe", "pragma", "with", "from"]
+        let keywords = ["select", "show", "describe", "pragma", "with", "from", "explain", "create", "insert", "update", "delete", "drop", "alter", "copy", "summarize"]
         let firstToken = prompt
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .split(separator: " ")

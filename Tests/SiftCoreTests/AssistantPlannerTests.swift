@@ -1162,6 +1162,106 @@ final class DataSourceFileInfoTests: XCTestCase {
     }
 }
 
+// MARK: - Parquet metadata
+
+final class ParquetMetadataTests: XCTestCase {
+    func testParquetMetadataUsesParquetMetadata() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "Show metadata", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("parquet_metadata"))
+    }
+
+    func testParquetFileSchemaUsesParquetSchema() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "Show parquet schema", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("parquet_schema"))
+    }
+
+    func testParquetFileInfoUsesMetadata() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let action = AssistantPlanner.plan(prompt: "Show file info", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan")
+        }
+
+        XCTAssertTrue(plan.sql.contains("parquet_metadata"))
+    }
+}
+
+// MARK: - DuckDB EXPLAIN support
+
+final class DuckDBExplainTests: XCTestCase {
+    func testExplainSelectPassesThroughAsSQL() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "EXPLAIN SELECT * FROM trades;", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("EXPLAIN"))
+    }
+
+    func testSummarizePassesThroughAsSQL() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "SUMMARIZE trades;", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("SUMMARIZE"))
+    }
+
+    func testCopyStatementPassesThroughAsSQL() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "COPY trades TO '/tmp/out.csv';", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("COPY"))
+    }
+}
+
+// MARK: - ProviderKind properties
+
+final class ProviderKindExtendedTests: XCTestCase {
+    func testSuggestedModels() {
+        XCTAssertEqual(ProviderKind.claude.suggestedModel, "sonnet")
+        XCTAssertEqual(ProviderKind.openAI.suggestedModel, "")
+        XCTAssertEqual(ProviderKind.gemini.suggestedModel, "")
+    }
+
+    func testAllCasesCount() {
+        XCTAssertEqual(ProviderKind.allCases.count, 3)
+    }
+
+    func testGeminiHasMultipleAPIKeyNames() {
+        XCTAssertTrue(ProviderKind.gemini.apiKeyEnvironmentNames.count >= 2)
+        XCTAssertTrue(ProviderKind.gemini.apiKeyEnvironmentNames.contains("GEMINI_API_KEY"))
+        XCTAssertTrue(ProviderKind.gemini.apiKeyEnvironmentNames.contains("GOOGLE_API_KEY"))
+    }
+
+    func testProviderKindIdentifiable() {
+        XCTAssertEqual(ProviderKind.claude.id, "claude")
+        XCTAssertEqual(ProviderKind.openAI.id, "openAI")
+        XCTAssertEqual(ProviderKind.gemini.id, "gemini")
+    }
+}
+
 // MARK: - Random sampling
 
 final class RandomSamplingTests: XCTestCase {
