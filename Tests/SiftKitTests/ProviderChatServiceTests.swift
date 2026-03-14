@@ -480,6 +480,99 @@ final class ProviderChatServiceTests: XCTestCase {
         XCTAssertNotEqual(DuckDBCLIError.binaryNotFound, DuckDBCLIError.launchFailed("x"))
     }
 
+    func testClaudeIncludesModelArgument() async throws {
+        let executor = CapturingProcessExecutor()
+        executor.handler = { _, _, _ in
+            ProcessExecutionResult(
+                stdout: #"{"result":"OK"}"#,
+                stderr: "",
+                exitCode: 0
+            )
+        }
+
+        let service = ProviderChatService(
+            processExecutor: executor,
+            secretStore: MemorySecretStore(),
+            baseEnvironment: [:]
+        )
+
+        var settings = AppSettings(hasCompletedSetup: true, defaultProvider: .claude)
+        settings.setPreference(ProviderPreference(authMode: .localCLI, customModel: "opus"), for: .claude)
+
+        _ = try await service.respond(
+            prompt: "Test",
+            source: nil,
+            transcript: [],
+            settings: settings,
+            providerStatuses: [ProviderStatus(provider: .claude, cliInstalled: true, cliPath: "/usr/bin/claude", apiKeyPresent: false, environmentKeyPresent: false)]
+        )
+
+        XCTAssertTrue(executor.invocation?.arguments.contains("opus") == true)
+        XCTAssertTrue(executor.invocation?.arguments.contains("--model") == true)
+    }
+
+    func testClaudeWithoutModelOmitsModelArgument() async throws {
+        let executor = CapturingProcessExecutor()
+        executor.handler = { _, _, _ in
+            ProcessExecutionResult(
+                stdout: #"{"result":"OK"}"#,
+                stderr: "",
+                exitCode: 0
+            )
+        }
+
+        let service = ProviderChatService(
+            processExecutor: executor,
+            secretStore: MemorySecretStore(),
+            baseEnvironment: [:]
+        )
+
+        var settings = AppSettings(hasCompletedSetup: true, defaultProvider: .claude)
+        settings.setPreference(ProviderPreference(authMode: .localCLI, customModel: ""), for: .claude)
+
+        _ = try await service.respond(
+            prompt: "Test",
+            source: nil,
+            transcript: [],
+            settings: settings,
+            providerStatuses: [ProviderStatus(provider: .claude, cliInstalled: true, cliPath: "/usr/bin/claude", apiKeyPresent: false, environmentKeyPresent: false)]
+        )
+
+        XCTAssertFalse(executor.invocation?.arguments.contains("--model") == true)
+    }
+
+    func testGenerateSQLForParquetSource() async throws {
+        let executor = CapturingProcessExecutor()
+        executor.handler = { _, _, _ in
+            ProcessExecutionResult(
+                stdout: #"{"result":"```sql\nSELECT * FROM read_parquet('/tmp/data.parquet') LIMIT 5;\n```\nShowing 5 rows."}"#,
+                stderr: "",
+                exitCode: 0
+            )
+        }
+
+        let service = ProviderChatService(
+            processExecutor: executor,
+            secretStore: MemorySecretStore(),
+            baseEnvironment: [:]
+        )
+
+        var settings = AppSettings(hasCompletedSetup: true, defaultProvider: .claude)
+        settings.setPreference(ProviderPreference(authMode: .localCLI, customModel: ""), for: .claude)
+
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let response = try await service.generateSQL(
+            prompt: "show me some rows",
+            source: source,
+            transcript: [],
+            settings: settings,
+            providerStatuses: [ProviderStatus(provider: .claude, cliInstalled: true, cliPath: "/usr/bin/claude", apiKeyPresent: false, environmentKeyPresent: false)]
+        )
+
+        XCTAssertTrue(response.sql.contains("read_parquet"))
+        XCTAssertFalse(response.explanation.isEmpty)
+    }
+
     func testCodexReadsLastMessageFile() async throws {
         let executor = CapturingProcessExecutor()
         executor.handler = { _, arguments, _ in
