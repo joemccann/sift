@@ -353,6 +353,87 @@ final class VisualizationEdgeCaseTests: XCTestCase {
         XCTAssertLessThanOrEqual(viz.commandOutputScale, 1.0)
     }
 
+    func testVisualizationWithAllProviders() {
+        for provider in ProviderKind.allCases {
+            let snapshot = MetalWorkspaceSnapshot(
+                destination: .assistant, provider: provider, sourceKind: .parquet,
+                sourceCount: 1, transcriptCount: 3, providerReadiness: 1,
+                executionState: .success, commandDurationMilliseconds: 100,
+                commandOutputBytes: 500, isRunning: false
+            )
+            let viz = MetalWorkspaceVisualization(snapshot: snapshot, signalCount: 16)
+            XCTAssertEqual(viz.signalBars.count, 16, "\(provider) should produce 16 bars")
+            XCTAssertTrue(viz.signalBars.allSatisfy { $0 >= 0 && $0 <= 1 })
+        }
+    }
+
+    func testVisualizationWithAllSourceKinds() {
+        for kind in DataSourceKind.allCases {
+            let snapshot = MetalWorkspaceSnapshot(
+                destination: .assistant, provider: .claude, sourceKind: kind,
+                sourceCount: 1, transcriptCount: 2, providerReadiness: 1,
+                executionState: .idle, commandDurationMilliseconds: 0,
+                commandOutputBytes: 0, isRunning: false
+            )
+            let viz = MetalWorkspaceVisualization(snapshot: snapshot, signalCount: 12)
+            XCTAssertGreaterThanOrEqual(viz.signalBars.count, 12)
+            XCTAssertTrue(viz.signalBars.allSatisfy { $0 >= 0 && $0 <= 1 })
+        }
+    }
+
+    func testVisualizationReadinessScaling() {
+        let low = MetalWorkspaceVisualization(
+            snapshot: MetalWorkspaceSnapshot(
+                destination: .assistant, provider: .claude, sourceKind: nil,
+                sourceCount: 0, transcriptCount: 0, providerReadiness: 0,
+                executionState: .idle, commandDurationMilliseconds: 0,
+                commandOutputBytes: 0, isRunning: false
+            ), signalCount: 12
+        )
+        let high = MetalWorkspaceVisualization(
+            snapshot: MetalWorkspaceSnapshot(
+                destination: .assistant, provider: .claude, sourceKind: nil,
+                sourceCount: 0, transcriptCount: 0, providerReadiness: 3,
+                executionState: .idle, commandDurationMilliseconds: 0,
+                commandOutputBytes: 0, isRunning: false
+            ), signalCount: 12
+        )
+        XCTAssertLessThan(low.readinessFraction, high.readinessFraction)
+    }
+
+    func testVisualizationTranscriptDensityScaling() {
+        let empty = MetalWorkspaceVisualization(
+            snapshot: MetalWorkspaceSnapshot(
+                destination: .assistant, provider: .claude, sourceKind: nil,
+                sourceCount: 0, transcriptCount: 0, providerReadiness: 0,
+                executionState: .idle, commandDurationMilliseconds: 0,
+                commandOutputBytes: 0, isRunning: false
+            ), signalCount: 12
+        )
+        let full = MetalWorkspaceVisualization(
+            snapshot: MetalWorkspaceSnapshot(
+                destination: .assistant, provider: .claude, sourceKind: nil,
+                sourceCount: 0, transcriptCount: 20, providerReadiness: 0,
+                executionState: .idle, commandDurationMilliseconds: 0,
+                commandOutputBytes: 0, isRunning: false
+            ), signalCount: 12
+        )
+        XCTAssertLessThan(empty.transcriptDensity, full.transcriptDensity)
+    }
+
+    func testVisualizationCommandDurationRecorded() {
+        let viz = MetalWorkspaceVisualization(
+            snapshot: MetalWorkspaceSnapshot(
+                destination: .assistant, provider: .claude, sourceKind: .duckdb,
+                sourceCount: 1, transcriptCount: 5, providerReadiness: 1,
+                executionState: .success, commandDurationMilliseconds: 500,
+                commandOutputBytes: 1024, isRunning: false
+            ), signalCount: 12
+        )
+        XCTAssertEqual(viz.commandDurationMilliseconds, 500)
+        XCTAssertGreaterThan(viz.commandOutputScale, 0)
+    }
+
     func testVisualizationSourceDensityScaling() {
         let noSources = MetalWorkspaceVisualization(
             snapshot: MetalWorkspaceSnapshot(

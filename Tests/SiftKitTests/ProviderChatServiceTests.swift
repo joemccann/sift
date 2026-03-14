@@ -101,6 +101,54 @@ final class ProviderSecretStoreErrorTests: XCTestCase {
     }
 }
 
+final class ProviderDiagnosticsEdgeCaseTests: XCTestCase {
+    func testDetectsMultipleProviderCLIs() {
+        let statuses = ProviderDiagnostics.detect(
+            environment: ["PATH": "/tooling:/bin"],
+            secretStore: MemorySecretStore(),
+            executableExists: { path in
+                path == "/tooling/claude" || path == "/tooling/codex" || path == "/tooling/gemini"
+            }
+        )
+
+        let installed = statuses.filter(\.cliInstalled)
+        XCTAssertEqual(installed.count, 3)
+    }
+
+    func testDetectsNoProviders() {
+        let statuses = ProviderDiagnostics.detect(
+            environment: ["PATH": ""],
+            secretStore: MemorySecretStore(),
+            executableExists: { _ in false }
+        )
+
+        XCTAssertTrue(statuses.allSatisfy { !$0.cliInstalled && !$0.apiKeyPresent && !$0.environmentKeyPresent })
+    }
+
+    func testDetectsStoredKeyAndEnvironmentKey() {
+        let statuses = ProviderDiagnostics.detect(
+            environment: ["ANTHROPIC_API_KEY": "env-key", "PATH": ""],
+            secretStore: MemorySecretStore(keys: [.claude: "stored-key"]),
+            executableExists: { _ in false }
+        )
+
+        let claude = statuses.first(where: { $0.provider == .claude })!
+        XCTAssertTrue(claude.apiKeyPresent)
+        XCTAssertTrue(claude.environmentKeyPresent)
+    }
+
+    func testResolvesFirstMatchingCLIPath() {
+        let statuses = ProviderDiagnostics.detect(
+            environment: ["PATH": "/first:/second"],
+            secretStore: MemorySecretStore(),
+            executableExists: { path in path == "/first/claude" || path == "/second/claude" }
+        )
+
+        let claude = statuses.first(where: { $0.provider == .claude })!
+        XCTAssertEqual(claude.cliPath, "/first/claude")
+    }
+}
+
 final class ProviderChatServiceTests: XCTestCase {
     func testClaudeJSONResponseIsParsed() async throws {
         let executor = CapturingProcessExecutor()
