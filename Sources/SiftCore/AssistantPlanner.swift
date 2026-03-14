@@ -32,6 +32,45 @@ public enum AssistantAction: Equatable, Sendable {
     case showCommandCount
 }
 
+public struct CommandInfo: Equatable, Sendable {
+    public let command: String
+    public let description: String
+
+    public init(command: String, description: String) {
+        self.command = command
+        self.description = description
+    }
+}
+
+public enum CommandRegistry {
+    public static let allCommands: [CommandInfo] = [
+        CommandInfo(command: "/sql", description: "Run raw SQL against the active source"),
+        CommandInfo(command: "/duckdb", description: "Run raw DuckDB CLI arguments"),
+        CommandInfo(command: "/help", description: "Show available commands"),
+        CommandInfo(command: "/clear", description: "Clear the conversation"),
+        CommandInfo(command: "/sources", description: "List attached data sources"),
+        CommandInfo(command: "/copy", description: "Copy last result to clipboard"),
+        CommandInfo(command: "/rerun", description: "Re-execute the last command"),
+        CommandInfo(command: "/history", description: "Show recent commands"),
+        CommandInfo(command: "/export", description: "Export transcript as Markdown"),
+        CommandInfo(command: "/status", description: "Show workspace status"),
+        CommandInfo(command: "/version", description: "Show Sift version info"),
+        CommandInfo(command: "/bookmark", description: "Bookmark the last command"),
+        CommandInfo(command: "/bookmarks", description: "List saved bookmarks"),
+        CommandInfo(command: "/undo", description: "Remove last user message"),
+        CommandInfo(command: "/stats", description: "Show session statistics"),
+    ]
+
+    /// Returns commands matching a prefix (for tab completion)
+    public static func completions(for prefix: String) -> [CommandInfo] {
+        let lowered = prefix.lowercased().trimmingCharacters(in: .whitespaces)
+        guard lowered.hasPrefix("/"), lowered.count > 1 else {
+            return lowered == "/" ? allCommands : []
+        }
+        return allCommands.filter { $0.command.lowercased().hasPrefix(lowered) }
+    }
+}
+
 public enum PromptLibrary {
     public static func prompts(for source: DataSource?) -> [PromptChip] {
         guard let source else {

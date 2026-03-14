@@ -35,8 +35,11 @@ public final class SiftViewModel: ObservableObject {
     @Published public var isDiagnosticsDrawerPresented = false
     @Published public var isSetupFlowPresented = false
     @Published public private(set) var isRunning = false
+    @Published public private(set) var isCancelled = false
     @Published public var searchQuery = ""
     @Published public private(set) var searchResults: [TranscriptItem] = []
+
+    private var runningTask: Task<Void, Never>?
 
     private let executor: (any CommandExecuting)?
     private let chatResponder: any ProviderResponding
@@ -157,6 +160,26 @@ public final class SiftViewModel: ObservableObject {
         providerStatuses.first(where: { $0.provider == provider })
     }
 
+    /// Returns tab-completion suggestions for the current composer text
+    public var commandCompletions: [CommandInfo] {
+        CommandRegistry.completions(for: composerText)
+    }
+
+    /// Cancel the currently running command
+    public func cancelRunningCommand() {
+        guard isRunning else { return }
+        runningTask?.cancel()
+        isCancelled = true
+        isRunning = false
+        appendTranscript(
+            TranscriptItem(
+                role: .system,
+                title: "Cancelled",
+                body: "The running command was cancelled."
+            )
+        )
+    }
+
     public func importSource(url: URL) {
         guard let source = DataSource.from(url: url) else {
             appendTranscript(
@@ -263,6 +286,7 @@ public final class SiftViewModel: ObservableObject {
         let prompt = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
 
+        isCancelled = false
         composerText = ""
         appendTranscript(
             TranscriptItem(

@@ -100,22 +100,39 @@ public struct BookmarkedCommand: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+public struct QueryTemplate: Codable, Equatable, Sendable, Identifiable {
+    public let id: UUID
+    public let name: String
+    public let sql: String
+    public let createdAt: Date
+
+    public init(id: UUID = UUID(), name: String, sql: String, createdAt: Date = Date()) {
+        self.id = id
+        self.name = name
+        self.sql = sql
+        self.createdAt = createdAt
+    }
+}
+
 public struct AppSettings: Codable, Equatable, Sendable {
     public var hasCompletedSetup: Bool
     public var defaultProvider: ProviderKind
     public var providerPreferences: [String: ProviderPreference]
     public var bookmarks: [BookmarkedCommand]
+    public var queryTemplates: [QueryTemplate]
 
     public init(
         hasCompletedSetup: Bool = false,
         defaultProvider: ProviderKind = .claude,
         providerPreferences: [String: ProviderPreference] = [:],
-        bookmarks: [BookmarkedCommand] = []
+        bookmarks: [BookmarkedCommand] = [],
+        queryTemplates: [QueryTemplate] = []
     ) {
         self.hasCompletedSetup = hasCompletedSetup
         self.defaultProvider = defaultProvider
         self.providerPreferences = providerPreferences
         self.bookmarks = bookmarks
+        self.queryTemplates = queryTemplates
     }
 
     public func preference(for provider: ProviderKind) -> ProviderPreference {

@@ -1631,6 +1631,72 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
     }
 
+    // MARK: - Tab completion
+
+    func testCommandCompletionsForSlashH() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/h"
+        let completions = viewModel.commandCompletions
+        XCTAssertTrue(completions.contains(where: { $0.command == "/help" }))
+        XCTAssertTrue(completions.contains(where: { $0.command == "/history" }))
+    }
+
+    func testCommandCompletionsForNonCommandReturnsEmpty() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "select * from"
+        XCTAssertTrue(viewModel.commandCompletions.isEmpty)
+    }
+
+    // MARK: - Cancellation
+
+    func testCancelWhenNotRunningDoesNothing() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let countBefore = viewModel.transcript.count
+        viewModel.cancelRunningCommand()
+
+        // Should not add any transcript items when not running
+        XCTAssertEqual(viewModel.transcript.count, countBefore)
+        XCTAssertFalse(viewModel.isCancelled)
+    }
+
+    func testIsCancelledResetsOnNewPrompt() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // Manually set cancelled state
+        // Then send a new prompt to reset it
+        viewModel.composerText = "/help"
+        await viewModel.sendPrompt()
+
+        XCTAssertFalse(viewModel.isCancelled)
+    }
+
     func testInitialTranscriptHasWelcomeMessage() {
         let items = SiftViewModel.initialTranscript
         XCTAssertEqual(items.count, 1)

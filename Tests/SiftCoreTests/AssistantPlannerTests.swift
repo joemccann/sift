@@ -1395,6 +1395,117 @@ final class DuckDBCommandPlanTests: XCTestCase {
     }
 }
 
+// MARK: - CommandRegistry (tab completion)
+
+final class CommandRegistryTests: XCTestCase {
+    func testAllCommandsIsNotEmpty() {
+        XCTAssertFalse(CommandRegistry.allCommands.isEmpty)
+    }
+
+    func testAllCommandsStartWithSlash() {
+        for cmd in CommandRegistry.allCommands {
+            XCTAssertTrue(cmd.command.hasPrefix("/"), "\(cmd.command) should start with /")
+        }
+    }
+
+    func testAllCommandsHaveDescriptions() {
+        for cmd in CommandRegistry.allCommands {
+            XCTAssertFalse(cmd.description.isEmpty, "\(cmd.command) has empty description")
+        }
+    }
+
+    func testCompletionsForSlashReturnsAll() {
+        let results = CommandRegistry.completions(for: "/")
+        XCTAssertEqual(results.count, CommandRegistry.allCommands.count)
+    }
+
+    func testCompletionsForSlashHReturnsHelpAndHistory() {
+        let results = CommandRegistry.completions(for: "/h")
+        XCTAssertTrue(results.contains(where: { $0.command == "/help" }))
+        XCTAssertTrue(results.contains(where: { $0.command == "/history" }))
+    }
+
+    func testCompletionsForSlashClearReturnsExactMatch() {
+        let results = CommandRegistry.completions(for: "/clear")
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.command, "/clear")
+    }
+
+    func testCompletionsForNoSlashReturnsEmpty() {
+        let results = CommandRegistry.completions(for: "hello")
+        XCTAssertTrue(results.isEmpty)
+    }
+
+    func testCompletionsForEmptyStringReturnsEmpty() {
+        let results = CommandRegistry.completions(for: "")
+        XCTAssertTrue(results.isEmpty)
+    }
+
+    func testCompletionsAreCaseInsensitive() {
+        let results = CommandRegistry.completions(for: "/H")
+        XCTAssertTrue(results.contains(where: { $0.command == "/help" }))
+    }
+
+    func testCompletionsForSlashBReturnsBookmarkCommands() {
+        let results = CommandRegistry.completions(for: "/b")
+        XCTAssertTrue(results.contains(where: { $0.command == "/bookmark" }))
+        XCTAssertTrue(results.contains(where: { $0.command == "/bookmarks" }))
+    }
+
+    func testCompletionsForNonexistentPrefixReturnsEmpty() {
+        let results = CommandRegistry.completions(for: "/xyz")
+        XCTAssertTrue(results.isEmpty)
+    }
+
+    func testCommandInfoEquality() {
+        let a = CommandInfo(command: "/help", description: "Show help")
+        let b = CommandInfo(command: "/help", description: "Show help")
+        XCTAssertEqual(a, b)
+    }
+
+    func testCommandInfoInequality() {
+        let a = CommandInfo(command: "/help", description: "Show help")
+        let b = CommandInfo(command: "/clear", description: "Clear")
+        XCTAssertNotEqual(a, b)
+    }
+}
+
+// MARK: - QueryTemplate model
+
+final class QueryTemplateTests: XCTestCase {
+    func testQueryTemplateCodableRoundTrip() throws {
+        let template = QueryTemplate(name: "Count rows", sql: "SELECT COUNT(*) FROM trades;")
+        let data = try JSONEncoder().encode(template)
+        let restored = try JSONDecoder().decode(QueryTemplate.self, from: data)
+        XCTAssertEqual(restored.id, template.id)
+        XCTAssertEqual(restored.name, "Count rows")
+        XCTAssertEqual(restored.sql, "SELECT COUNT(*) FROM trades;")
+    }
+
+    func testQueryTemplateEquality() {
+        let id = UUID()
+        let a = QueryTemplate(id: id, name: "Test", sql: "SELECT 1;")
+        let b = QueryTemplate(id: id, name: "Test", sql: "SELECT 1;")
+        XCTAssertEqual(a, b)
+    }
+
+    func testAppSettingsWithTemplatesCodableRoundTrip() throws {
+        var settings = AppSettings(hasCompletedSetup: true)
+        settings.queryTemplates = [
+            QueryTemplate(name: "Count", sql: "SELECT COUNT(*) FROM trades;"),
+        ]
+        let data = try JSONEncoder().encode(settings)
+        let restored = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(restored.queryTemplates.count, 1)
+        XCTAssertEqual(restored.queryTemplates.first?.name, "Count")
+    }
+
+    func testEmptyTemplatesByDefault() {
+        let settings = AppSettings()
+        XCTAssertTrue(settings.queryTemplates.isEmpty)
+    }
+}
+
 // MARK: - MetalExecutionState
 
 final class MetalExecutionStateTests: XCTestCase {
