@@ -236,4 +236,50 @@ final class DuckDBAdapterTests: XCTestCase {
         let request = DuckDBCLIExecutor.request(forRawArguments: ["--version"], binaryPath: "/usr/bin/duckdb")
         XCTAssertEqual(request.sql, "--version")
     }
+
+    // MARK: - Request building for all source kinds
+
+    func testRequestForAllFileKindsUsesMemory() {
+        for kind in [DataSourceKind.parquet, .csv, .json] {
+            let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.\(kind.rawValue)"), kind: kind)
+            let plan = DuckDBCommandPlan(source: source, sql: "SELECT 1;", explanation: "Test")
+            let request = DuckDBCLIExecutor.request(for: plan, binaryPath: "/usr/bin/duckdb")
+            XCTAssertEqual(request.arguments.first, ":memory:", "\(kind) should use :memory:")
+        }
+    }
+
+    func testRequestForDuckDBUsesFilePath() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let plan = DuckDBCommandPlan(source: source, sql: "SHOW TABLES;", explanation: "Test")
+        let request = DuckDBCLIExecutor.request(for: plan, binaryPath: "/usr/bin/duckdb")
+        XCTAssertEqual(request.arguments.first, "/tmp/db.duckdb")
+        XCTAssertTrue(request.arguments.contains("-readonly"))
+    }
+
+    func testRequestIncludesTableFlag() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let plan = DuckDBCommandPlan(source: source, sql: "SELECT 1;", explanation: "Test")
+        let request = DuckDBCLIExecutor.request(for: plan, binaryPath: "/usr/bin/duckdb")
+        XCTAssertTrue(request.arguments.contains("-table"))
+        XCTAssertTrue(request.arguments.contains("-c"))
+    }
+
+    // MARK: - Binary locator priority
+
+    func testBinaryLocatorExplicitAlwaysFirst() {
+        let candidates = DuckDBBinaryLocator.candidatePaths(environment: [
+            "DUCKDB_BINARY": "/my/custom/duckdb",
+            "PATH": "/other/bin",
+        ])
+        XCTAssertEqual(candidates.first, "/my/custom/duckdb")
+    }
+
+    func testBinaryLocatorEmptyExplicitSkipped() {
+        let candidates = DuckDBBinaryLocator.candidatePaths(environment: [
+            "DUCKDB_BINARY": "",
+            "PATH": "/usr/bin",
+        ])
+        // Empty DUCKDB_BINARY should be skipped
+        XCTAssertFalse(candidates.first == "")
+    }
 }
