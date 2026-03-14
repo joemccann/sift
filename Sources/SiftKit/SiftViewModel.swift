@@ -542,6 +542,17 @@ public final class SiftViewModel: ObservableObject {
         composerFocusRequestID += 1
     }
 
+    public func transcriptItems(for role: TranscriptRole) -> [TranscriptItem] {
+        transcript.filter { $0.role == role }
+    }
+
+    public var commandCount: Int {
+        transcript.filter {
+            if case .commandResult = $0.kind { return true }
+            return false
+        }.count
+    }
+
     public func searchTranscript(query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searchQuery = trimmed

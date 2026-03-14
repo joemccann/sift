@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+@testable import DuckDBAdapter
 @testable import SiftCore
 @testable import SiftKit
 
@@ -405,6 +406,78 @@ final class ProviderChatServiceTests: XCTestCase {
             ProviderChatError.cliUnavailable("A"),
             ProviderChatError.missingAPIKey("A")
         )
+    }
+
+    func testGeminiJSONResponseIsParsed() async throws {
+        let executor = CapturingProcessExecutor()
+        executor.handler = { _, _, _ in
+            ProcessExecutionResult(
+                stdout: #"some preamble text {"response":"GEMINI_REPLY"}"#,
+                stderr: "",
+                exitCode: 0
+            )
+        }
+
+        let service = ProviderChatService(
+            processExecutor: executor,
+            secretStore: MemorySecretStore(),
+            baseEnvironment: [:]
+        )
+
+        var settings = AppSettings(hasCompletedSetup: true, defaultProvider: .gemini)
+        settings.setPreference(ProviderPreference(authMode: .localCLI, customModel: ""), for: .gemini)
+
+        let response = try await service.respond(
+            prompt: "Test",
+            source: nil,
+            transcript: [],
+            settings: settings,
+            providerStatuses: [ProviderStatus(provider: .gemini, cliInstalled: true, cliPath: "/usr/bin/gemini", apiKeyPresent: false, environmentKeyPresent: false)]
+        )
+
+        XCTAssertEqual(response.text, "GEMINI_REPLY")
+        XCTAssertEqual(response.provider, .gemini)
+    }
+
+    func testGeminiIncludesModelArgument() async throws {
+        let executor = CapturingProcessExecutor()
+        executor.handler = { _, _, _ in
+            ProcessExecutionResult(
+                stdout: #"{"response":"OK"}"#,
+                stderr: "",
+                exitCode: 0
+            )
+        }
+
+        let service = ProviderChatService(
+            processExecutor: executor,
+            secretStore: MemorySecretStore(),
+            baseEnvironment: [:]
+        )
+
+        var settings = AppSettings(hasCompletedSetup: true, defaultProvider: .gemini)
+        settings.setPreference(ProviderPreference(authMode: .localCLI, customModel: "gemini-2.5-flash"), for: .gemini)
+
+        _ = try await service.respond(
+            prompt: "Test",
+            source: nil,
+            transcript: [],
+            settings: settings,
+            providerStatuses: [ProviderStatus(provider: .gemini, cliInstalled: true, cliPath: "/usr/bin/gemini", apiKeyPresent: false, environmentKeyPresent: false)]
+        )
+
+        XCTAssertTrue(executor.invocation?.arguments.contains("gemini-2.5-flash") == true)
+    }
+
+    func testDuckDBCLIErrorDescriptions() {
+        XCTAssertTrue(DuckDBCLIError.binaryNotFound.errorDescription?.contains("duckdb") == true)
+        XCTAssertTrue(DuckDBCLIError.launchFailed("oops").errorDescription?.contains("oops") == true)
+        XCTAssertTrue(DuckDBCLIError.invalidArguments("bad").errorDescription?.contains("bad") == true)
+    }
+
+    func testDuckDBCLIErrorEquality() {
+        XCTAssertEqual(DuckDBCLIError.binaryNotFound, DuckDBCLIError.binaryNotFound)
+        XCTAssertNotEqual(DuckDBCLIError.binaryNotFound, DuckDBCLIError.launchFailed("x"))
     }
 
     func testCodexReadsLastMessageFile() async throws {

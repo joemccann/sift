@@ -1056,6 +1056,41 @@ final class DuckDBMemoryExtensionTests: XCTestCase {
     }
 }
 
+// MARK: - DataSourceKind properties
+
+final class DataSourceKindPropertiesTests: XCTestCase {
+    func testReadFunctionForFileBasedKinds() {
+        XCTAssertEqual(DataSourceKind.parquet.readFunction, "read_parquet")
+        XCTAssertEqual(DataSourceKind.csv.readFunction, "read_csv")
+        XCTAssertEqual(DataSourceKind.json.readFunction, "read_json")
+        XCTAssertNil(DataSourceKind.duckdb.readFunction)
+    }
+
+    func testDisplayLabels() {
+        XCTAssertEqual(DataSourceKind.parquet.displayLabel, "Parquet")
+        XCTAssertEqual(DataSourceKind.csv.displayLabel, "CSV")
+        XCTAssertEqual(DataSourceKind.json.displayLabel, "JSON")
+        XCTAssertEqual(DataSourceKind.duckdb.displayLabel, "DuckDB")
+    }
+
+    func testFileExtensions() {
+        XCTAssertTrue(DataSourceKind.parquet.fileExtensions.contains("parquet"))
+        XCTAssertTrue(DataSourceKind.csv.fileExtensions.contains("csv"))
+        XCTAssertTrue(DataSourceKind.csv.fileExtensions.contains("tsv"))
+        XCTAssertTrue(DataSourceKind.json.fileExtensions.contains("json"))
+        XCTAssertTrue(DataSourceKind.json.fileExtensions.contains("jsonl"))
+        XCTAssertTrue(DataSourceKind.json.fileExtensions.contains("ndjson"))
+        XCTAssertTrue(DataSourceKind.duckdb.fileExtensions.contains("duckdb"))
+        XCTAssertTrue(DataSourceKind.duckdb.fileExtensions.contains("db"))
+    }
+
+    func testAllKindsHaveExtensions() {
+        for kind in DataSourceKind.allCases {
+            XCTAssertFalse(kind.fileExtensions.isEmpty, "\(kind) has no extensions")
+        }
+    }
+}
+
 // MARK: - DataSource file info
 
 final class DataSourceFileInfoTests: XCTestCase {

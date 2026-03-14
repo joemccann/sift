@@ -5,6 +5,36 @@ public enum DataSourceKind: String, CaseIterable, Codable, Sendable {
     case duckdb
     case csv
     case json
+
+    /// The DuckDB read function for file-based sources
+    public var readFunction: String? {
+        switch self {
+        case .parquet: return "read_parquet"
+        case .csv: return "read_csv"
+        case .json: return "read_json"
+        case .duckdb: return nil
+        }
+    }
+
+    /// Human-readable display name for this source kind
+    public var displayLabel: String {
+        switch self {
+        case .parquet: return "Parquet"
+        case .csv: return "CSV"
+        case .json: return "JSON"
+        case .duckdb: return "DuckDB"
+        }
+    }
+
+    /// File extensions recognized for this kind
+    public var fileExtensions: [String] {
+        switch self {
+        case .parquet: return ["parquet"]
+        case .csv: return ["csv", "tsv"]
+        case .json: return ["json", "jsonl", "ndjson"]
+        case .duckdb: return ["duckdb", "db"]
+        }
+    }
 }
 
 public struct DataSource: Identifiable, Codable, Equatable, Sendable {

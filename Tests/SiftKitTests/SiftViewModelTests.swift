@@ -1182,6 +1182,53 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.transcript.count, countBefore)
     }
 
+    func testTranscriptItemsForRoleFilters() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello"),
+                TranscriptItem(role: .user, title: "You", body: "Hi"),
+                TranscriptItem(role: .assistant, title: "A", body: "World"),
+                TranscriptItem(role: .system, title: "Sys", body: "Info"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertEqual(viewModel.transcriptItems(for: .assistant).count, 2)
+        XCTAssertEqual(viewModel.transcriptItems(for: .user).count, 1)
+        XCTAssertEqual(viewModel.transcriptItems(for: .system).count, 1)
+    }
+
+    func testCommandCountReflectsResults() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "SELECT 1;"],
+            sql: "SELECT 1;",
+            stdout: "1\n",
+            stderr: "",
+            exitCode: 0,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertEqual(viewModel.commandCount, 0)
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+        await viewModel.triggerPrompt("Preview this parquet file")
+
+        XCTAssertEqual(viewModel.commandCount, 1)
+    }
+
     func testDiagnosticsDrawerStartsClosed() {
         let viewModel = SiftViewModel(
             executor: nil,
