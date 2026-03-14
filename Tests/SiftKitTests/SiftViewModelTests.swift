@@ -1957,6 +1957,66 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.favoriteSources.isEmpty)
     }
 
+    // MARK: - Complete source lifecycle test
+
+    func testSourceFullLifecycle() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // 1. Import
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+        XCTAssertEqual(viewModel.sources.count, 1)
+
+        // 2. Alias
+        let id = viewModel.sources.first!.id
+        viewModel.setSourceAlias("Prices", for: id)
+        XCTAssertEqual(viewModel.sources.first?.displayName, "Prices")
+
+        // 3. Favorite
+        viewModel.toggleFavorite(for: id)
+        XCTAssertTrue(viewModel.favoriteSources.first?.displayName == "Prices")
+
+        // 4. Notes
+        viewModel.setSourceNotes("Daily OHLCV data", for: id)
+        XCTAssertEqual(viewModel.sourcesWithNotes.count, 1)
+
+        // 5. Find by search
+        XCTAssertEqual(viewModel.findSources(matching: "Prices").count, 1)
+
+        // 6. Remove
+        viewModel.removeSource(viewModel.sources.first!)
+        XCTAssertTrue(viewModel.sources.isEmpty)
+        XCTAssertTrue(viewModel.favoriteSources.isEmpty)
+    }
+
+    // MARK: - Error recovery in context
+
+    func testErrorRecoveryWithDuckDBOutput() {
+        let error = "Catalog Error: Table 'nonexistent' does not exist"
+        let suggestions = DuckDBErrorRecovery.suggestions(for: error)
+        XCTAssertTrue(suggestions.contains(where: { $0.contains("SHOW TABLES") }))
+    }
+
+    // MARK: - Multiple providers
+
+    func testRefreshProviderStatuses() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.refreshProviderStatuses()
+        XCTAssertEqual(viewModel.providerStatuses.count, ProviderKind.allCases.count)
+    }
+
     // MARK: - Notes on nonexistent source
 
     func testSetNotesOnNonexistentSourceDoesNothing() {
