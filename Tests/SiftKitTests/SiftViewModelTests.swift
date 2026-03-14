@@ -1814,6 +1814,51 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sources.first?.displayName, "data.parquet")
     }
 
+    // MARK: - Remote source import
+
+    func testImportRemoteSourceCreatesSource() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importRemoteSource(urlString: "https://example.com/data.parquet")
+        XCTAssertEqual(viewModel.sources.count, 1)
+        XCTAssertTrue(viewModel.sources.first?.isRemote == true)
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "Remote Source" }))
+    }
+
+    func testImportRemoteSourceInvalidURL() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importRemoteSource(urlString: "not a valid url")
+        XCTAssertTrue(viewModel.sources.isEmpty)
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "Invalid URL" }))
+    }
+
+    func testImportRemoteDuplicateDoesNotAdd() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importRemoteSource(urlString: "https://example.com/data.csv")
+        viewModel.importRemoteSource(urlString: "https://example.com/data.csv")
+        XCTAssertEqual(viewModel.sources.count, 1)
+    }
+
     // MARK: - Contextual suggestions
 
     func testContextualSuggestionsWithNoSources() {

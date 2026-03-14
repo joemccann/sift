@@ -331,6 +331,36 @@ public final class SiftViewModel: ObservableObject {
         TranscriptAnalytics.characterCount(in: transcript)
     }
 
+    /// Import a source from a remote URL string
+    public func importRemoteSource(urlString: String) {
+        guard let source = DataSource.fromRemoteURL(urlString) else {
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Invalid URL",
+                    body: "Could not import from `\(urlString)`. Only http/https URLs for supported file types are allowed."
+                )
+            )
+            return
+        }
+
+        if sources.first(where: { $0.url == source.url }) == nil {
+            sources.insert(source, at: 0)
+            selectedSource = source
+        } else {
+            selectedSource = sources.first(where: { $0.url == source.url })
+        }
+        selectedDestination = .assistant
+        appendTranscript(
+            TranscriptItem(
+                role: .system,
+                title: "Remote Source",
+                body: "Attached remote source `\(source.displayName)` from \(urlString)."
+            )
+        )
+        persistSnapshot()
+    }
+
     /// Smart prompt suggestions based on current context
     public var contextualSuggestions: [String] {
         var suggestions: [String] = []
