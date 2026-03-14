@@ -779,6 +779,21 @@ public final class SiftViewModel: ObservableObject {
         return Date().timeIntervalSince(firstTimestamp)
     }
 
+    /// Check if any source is a DuckDB database
+    public var hasDatabaseSource: Bool {
+        sources.contains(where: { $0.kind == .duckdb })
+    }
+
+    /// Check if any source is a file-based source (parquet, CSV, JSON)
+    public var hasFileSource: Bool {
+        sources.contains(where: { $0.kind != .duckdb })
+    }
+
+    /// Total number of distinct source kinds
+    public var sourceKindCount: Int {
+        Set(sources.map(\.kind)).count
+    }
+
     /// Last successful execution output (if any)
     public var lastSuccessfulOutput: String? {
         guard let lastExecution, lastExecution.exitCode == 0 else { return nil }
