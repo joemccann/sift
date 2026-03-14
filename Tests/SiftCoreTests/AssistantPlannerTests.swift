@@ -1334,6 +1334,32 @@ final class ParquetMetadataTests: XCTestCase {
     }
 }
 
+// MARK: - PromptChip model
+
+final class PromptChipModelTests: XCTestCase {
+    func testPromptChipEquality() {
+        let id = UUID()
+        let a = PromptChip(id: id, title: "Test", prompt: "test")
+        let b = PromptChip(id: id, title: "Test", prompt: "test")
+        XCTAssertEqual(a, b)
+    }
+
+    func testPromptChipIdentifiable() {
+        let chip = PromptChip(title: "Preview", prompt: "preview this")
+        XCTAssertNotEqual(chip.id, UUID()) // has its own unique ID
+    }
+}
+
+// MARK: - TranscriptRole properties
+
+final class TranscriptRoleTests: XCTestCase {
+    func testTranscriptRoleRawValues() {
+        XCTAssertEqual(TranscriptRole.assistant.rawValue, "assistant")
+        XCTAssertEqual(TranscriptRole.user.rawValue, "user")
+        XCTAssertEqual(TranscriptRole.system.rawValue, "system")
+    }
+}
+
 // MARK: - DuckDB EXPLAIN support
 
 final class DuckDBExplainTests: XCTestCase {
