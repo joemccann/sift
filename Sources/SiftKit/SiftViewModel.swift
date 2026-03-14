@@ -452,11 +452,56 @@ public final class SiftViewModel: ObservableObject {
                     body: response.text
                 )
             )
+
+            // Auto-execute SQL from the provider response.
+            if let sql = SQLExtractor.extractFirst(from: response.text),
+               let source = selectedSource,
+               let executor {
+                let plan = DuckDBCommandPlan(source: source, sql: sql, explanation: "Auto-executed from provider response")
+                await autoExecuteSQL(plan: plan, providerName: response.provider.displayName)
+            }
         } catch {
             appendTranscript(
                 TranscriptItem(
                     role: .system,
                     title: "Provider Error",
+                    body: error.localizedDescription
+                )
+            )
+        }
+    }
+
+    private func autoExecuteSQL(plan: DuckDBCommandPlan, providerName: String) async {
+        appendTranscript(
+            TranscriptItem(
+                role: .assistant,
+                title: "Running Query",
+                body: "Executing SQL against `\(plan.source.displayName)`…",
+                kind: .commandPreview(sql: plan.sql, sourceName: plan.source.displayName)
+            )
+        )
+
+        do {
+            let result = try await executor!.execute(plan: plan)
+            lastExecution = result
+            isDiagnosticsDrawerPresented = true
+            appendTranscript(
+                TranscriptItem(
+                    role: .assistant,
+                    title: result.exitCode == 0 ? "Query Result" : "Query Error",
+                    body: result.exitCode == 0 ? "Query completed successfully." : "DuckDB returned an error.",
+                    kind: .commandResult(
+                        exitCode: result.exitCode,
+                        stdout: result.stdout,
+                        stderr: result.stderr
+                    )
+                )
+            )
+        } catch {
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Execution Failed",
                     body: error.localizedDescription
                 )
             )

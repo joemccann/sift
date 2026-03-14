@@ -188,7 +188,7 @@ public final class ProviderChatService: ProviderResponding, @unchecked Sendable 
             Recent transcript:
             \(transcriptTail)
 
-            Respond concisely. If a DuckDB query would help, include it plainly and say what it does.
+            IMPORTANT: When the user asks a question that can be answered with data, you MUST write a DuckDB SQL query inside a ```sql fenced code block. Sift will automatically execute the first ```sql block against the selected source and show the results. Do NOT tell the user to run it themselves — Sift runs it for you. Keep your explanation brief and put the query in a ```sql block.
 
             User prompt:
             \(prompt)
@@ -201,7 +201,7 @@ public final class ProviderChatService: ProviderResponding, @unchecked Sendable 
         Recent transcript:
         \(transcriptTail)
 
-        Respond concisely. If the user needs to run SQL, say so clearly.
+        Respond concisely. If the user needs to open a data source first, say so clearly.
 
         User prompt:
         \(prompt)

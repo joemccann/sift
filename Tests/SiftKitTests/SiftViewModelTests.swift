@@ -136,6 +136,64 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.transcript.last?.body, response.text)
     }
 
+    func testProviderResponseWithSQLAutoExecutes() async {
+        let responseText = """
+        Here are the tables:
+
+        ```sql
+        SHOW TABLES;
+        ```
+        """
+        let duckResult = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [],
+            sql: "SHOW TABLES;",
+            stdout: "name\nmarket\nprices\n",
+            stderr: "",
+            exitCode: 0,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: duckResult),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: responseText)),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"))
+        viewModel.composerText = "what symbols have the highest volume this week"
+
+        await viewModel.sendPrompt()
+
+        // Should have: user message, provider response, command preview, query result
+        let titles = viewModel.transcript.map(\.title)
+        XCTAssertTrue(titles.contains("Claude"), "Should have provider response")
+        XCTAssertTrue(titles.contains("Running Query"), "Should have auto-execution preview")
+        XCTAssertTrue(titles.contains("Query Result"), "Should have query result")
+        XCTAssertEqual(viewModel.lastExecution?.stdout, "name\nmarket\nprices\n")
+    }
+
+    func testProviderResponseWithoutSQLDoesNotAutoExecute() async {
+        let response = ProviderChatResponse(provider: .claude, text: "No SQL here, just a plain answer.")
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: DuckDBExecutionResult(binaryPath: "", arguments: [], sql: "", stdout: "", stderr: "", exitCode: 0, startedAt: Date(), endedAt: Date())),
+            chatResponder: MockChatResponder(response: response),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"))
+        viewModel.composerText = "explain momentum"
+
+        await viewModel.sendPrompt()
+
+        let titles = viewModel.transcript.map(\.title)
+        XCTAssertTrue(titles.contains("Claude"))
+        XCTAssertFalse(titles.contains("Running Query"), "Should NOT auto-execute without SQL")
+    }
+
     func testRawDuckDBPromptExecutesThroughExecutor() async {
         let result = DuckDBExecutionResult(
             binaryPath: "/opt/homebrew/bin/duckdb",
