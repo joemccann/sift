@@ -1957,6 +1957,76 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.favoriteSources.isEmpty)
     }
 
+    // MARK: - Source notes
+
+    func testSetSourceNotes() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+        let sourceID = viewModel.sources.first!.id
+
+        viewModel.setSourceNotes("Daily trade data from 2024", for: sourceID)
+        XCTAssertEqual(viewModel.sources.first?.notes, "Daily trade data from 2024")
+        XCTAssertEqual(viewModel.sourcesWithNotes.count, 1)
+    }
+
+    func testClearSourceNotes() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+        let sourceID = viewModel.sources.first!.id
+        viewModel.setSourceNotes("Some notes", for: sourceID)
+        viewModel.setSourceNotes(nil, for: sourceID)
+        XCTAssertTrue(viewModel.sourcesWithNotes.isEmpty)
+    }
+
+    // MARK: - Query history search
+
+    func testSearchQueryHistoryFindsMatches() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT * FROM trades;",
+            stdout: "1\n", stderr: "", exitCode: 0,
+            startedAt: Date(), endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+        await viewModel.triggerPrompt("Preview this parquet file")
+
+        let matches = viewModel.searchQueryHistory(query: "read_parquet")
+        XCTAssertFalse(matches.isEmpty)
+    }
+
+    func testSearchQueryHistoryNoMatches() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertTrue(viewModel.searchQueryHistory(query: "anything").isEmpty)
+    }
+
     // MARK: - Error/success results
 
     func testErrorAndSuccessResults() {

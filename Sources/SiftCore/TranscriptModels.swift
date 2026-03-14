@@ -113,6 +113,27 @@ public struct TranscriptItem: Identifiable, Equatable, Sendable, Codable {
     }
 }
 
+public enum TranscriptTiming {
+    /// Calculate the time gap between each consecutive pair of items
+    public static func itemDurations(in items: [TranscriptItem]) -> [(item: TranscriptItem, gapSeconds: TimeInterval)] {
+        guard items.count >= 2 else {
+            return items.map { ($0, 0) }
+        }
+        var result: [(TranscriptItem, TimeInterval)] = [( items[0], 0)]
+        for i in 1..<items.count {
+            let gap = items[i].timestamp.timeIntervalSince(items[i-1].timestamp)
+            result.append((items[i], gap))
+        }
+        return result
+    }
+
+    /// Find the longest gap between consecutive items
+    public static func longestGap(in items: [TranscriptItem]) -> TimeInterval {
+        let durations = itemDurations(in: items)
+        return durations.map(\.gapSeconds).max() ?? 0
+    }
+}
+
 public enum TranscriptFilter {
     /// Filter transcript items by date range
     public static func items(in items: [TranscriptItem], from start: Date, to end: Date) -> [TranscriptItem] {

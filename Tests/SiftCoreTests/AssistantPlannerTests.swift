@@ -3151,3 +3151,179 @@ final class DuckDBJoinPatternTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB aggregate patterns
+
+final class DuckDBAggregatePatternTests: XCTestCase {
+    func testAvgPriceFromTrades() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "avg price from trades", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("AVG(price)"))
+        XCTAssertTrue(plan.sql.contains("FROM trades"))
+    }
+
+    func testSumRevenueInSales() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "sum revenue in sales", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("SUM(revenue)"))
+    }
+
+    func testMaxVolumeFromTrades() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "max volume from trades", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("MAX(volume)"))
+    }
+
+    func testMinPriceInOrders() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "min price in orders", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("MIN(price)"))
+    }
+
+    func testAverageAlias() {
+        let result = AssistantPlanner.extractAggregatePattern(from: "average price from trades")
+        XCTAssertEqual(result?.function, "AVG")
+        XCTAssertEqual(result?.column, "price")
+        XCTAssertEqual(result?.table, "trades")
+    }
+
+    func testTotalAlias() {
+        let result = AssistantPlanner.extractAggregatePattern(from: "total quantity in orders")
+        XCTAssertEqual(result?.function, "SUM")
+    }
+
+    func testMaximumAlias() {
+        let result = AssistantPlanner.extractAggregatePattern(from: "maximum score from results")
+        XCTAssertEqual(result?.function, "MAX")
+    }
+
+    func testMinimumAlias() {
+        let result = AssistantPlanner.extractAggregatePattern(from: "minimum age from users")
+        XCTAssertEqual(result?.function, "MIN")
+    }
+
+    func testAggregateNoMatch() {
+        XCTAssertNil(AssistantPlanner.extractAggregatePattern(from: "show me the data"))
+    }
+
+    func testAvgWithOfPreposition() {
+        let result = AssistantPlanner.extractAggregatePattern(from: "avg of price from trades")
+        XCTAssertEqual(result?.function, "AVG")
+        XCTAssertEqual(result?.column, "price")
+    }
+}
+
+// MARK: - DuckDB order-by pattern
+
+final class DuckDBOrderByPatternTests: XCTestCase {
+    func testOrderByColumnInTable() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "order by price in trades", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("ORDER BY price"))
+        XCTAssertTrue(plan.sql.contains("FROM trades"))
+    }
+
+    func testSortTableByColumn() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "sort trades by date", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("ORDER BY date"))
+    }
+
+    func testExtractOrderByDescending() {
+        let result = AssistantPlanner.extractOrderByPattern(from: "sort price in trades desc")
+        XCTAssertEqual(result?.table, "trades")
+        XCTAssertEqual(result?.column, "price")
+        XCTAssertTrue(result?.descending == true)
+    }
+
+    func testExtractOrderByAscending() {
+        let result = AssistantPlanner.extractOrderByPattern(from: "order by name in users")
+        XCTAssertEqual(result?.table, "users")
+        XCTAssertEqual(result?.column, "name")
+        XCTAssertFalse(result?.descending == true)
+    }
+
+    func testExtractOrderByNoMatch() {
+        XCTAssertNil(AssistantPlanner.extractOrderByPattern(from: "show me everything"))
+    }
+}
+
+// MARK: - TranscriptTiming
+
+final class TranscriptTimingTests: XCTestCase {
+    func testItemDurationsCalculatesGaps() {
+        let now = Date()
+        let items = [
+            TranscriptItem(role: .user, title: "A", body: "1", timestamp: now),
+            TranscriptItem(role: .assistant, title: "B", body: "2", timestamp: now.addingTimeInterval(5)),
+            TranscriptItem(role: .user, title: "C", body: "3", timestamp: now.addingTimeInterval(15)),
+        ]
+        let durations = TranscriptTiming.itemDurations(in: items)
+        XCTAssertEqual(durations.count, 3)
+        XCTAssertEqual(durations[0].gapSeconds, 0, accuracy: 0.1)
+        XCTAssertEqual(durations[1].gapSeconds, 5, accuracy: 0.1)
+        XCTAssertEqual(durations[2].gapSeconds, 10, accuracy: 0.1)
+    }
+
+    func testLongestGap() {
+        let now = Date()
+        let items = [
+            TranscriptItem(role: .user, title: "A", body: "1", timestamp: now),
+            TranscriptItem(role: .assistant, title: "B", body: "2", timestamp: now.addingTimeInterval(2)),
+            TranscriptItem(role: .user, title: "C", body: "3", timestamp: now.addingTimeInterval(60)),
+        ]
+        XCTAssertEqual(TranscriptTiming.longestGap(in: items), 58, accuracy: 0.1)
+    }
+
+    func testLongestGapEmpty() {
+        XCTAssertEqual(TranscriptTiming.longestGap(in: []), 0)
+    }
+
+    func testItemDurationsSingleItem() {
+        let items = [TranscriptItem(role: .user, title: "A", body: "1")]
+        let durations = TranscriptTiming.itemDurations(in: items)
+        XCTAssertEqual(durations.count, 1)
+        XCTAssertEqual(durations[0].gapSeconds, 0)
+    }
+}
+
+// MARK: - Source notes
+
+final class DataSourceNotesTests: XCTestCase {
+    func testDefaultNotesIsNil() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        XCTAssertNil(source.notes)
+    }
+
+    func testNotesCodableRoundTrip() throws {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv, notes: "Daily trade data")
+        let data = try JSONEncoder().encode(source)
+        let restored = try JSONDecoder().decode(DataSource.self, from: data)
+        XCTAssertEqual(restored.notes, "Daily trade data")
+    }
+
+    func testNilNotesCodableRoundTrip() throws {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let data = try JSONEncoder().encode(source)
+        let restored = try JSONDecoder().decode(DataSource.self, from: data)
+        XCTAssertNil(restored.notes)
+    }
+}
+

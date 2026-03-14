@@ -717,6 +717,26 @@ public enum AssistantPlanner {
             )
         }
 
+        if let agg = extractAggregatePattern(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT \(agg.function)(\(agg.column)) AS result FROM \(agg.table);",
+                    explanation: "\(agg.function.uppercased()) of \(agg.column) in \(agg.table) from \(source.displayName)."
+                )
+            )
+        }
+
+        if let orderInfo = extractOrderByPattern(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM \(orderInfo.table) ORDER BY \(orderInfo.column) \(orderInfo.descending ? "DESC" : "ASC") LIMIT 25;",
+                    explanation: "Sorted by \(orderInfo.column) \(orderInfo.descending ? "descending" : "ascending") in \(orderInfo.table) from \(source.displayName)."
+                )
+            )
+        }
+
         if let filter = extractWhereFilter(from: lowercased) {
             return .command(
                 DuckDBCommandPlan(
@@ -840,6 +860,51 @@ public enum AssistantPlanner {
     }
 
     /// Extracts a table name from "count [table]" or "count rows in [table]"
+    /// Extracts "avg/sum/min/max [column] in/from [table]" pattern
+    static func extractAggregatePattern(from lowercased: String) -> (function: String, column: String, table: String)? {
+        let pattern = "(avg|sum|min|max|average|total|minimum|maximum) (?:of )?(\\w+) (?:in|from|of) (\\w+)"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []),
+              let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)),
+              match.numberOfRanges >= 4,
+              let fnRange = Range(match.range(at: 1), in: lowercased),
+              let colRange = Range(match.range(at: 2), in: lowercased),
+              let tableRange = Range(match.range(at: 3), in: lowercased) else {
+            return nil
+        }
+
+        let rawFn = String(lowercased[fnRange])
+        let sqlFn: String
+        switch rawFn {
+        case "avg", "average": sqlFn = "AVG"
+        case "sum", "total": sqlFn = "SUM"
+        case "min", "minimum": sqlFn = "MIN"
+        case "max", "maximum": sqlFn = "MAX"
+        default: sqlFn = rawFn.uppercased()
+        }
+
+        return (function: sqlFn, column: String(lowercased[colRange]), table: String(lowercased[tableRange]))
+    }
+
+    /// Extracts "order by [column] in [table]" or "sort [table] by [column]"
+    static func extractOrderByPattern(from lowercased: String) -> (table: String, column: String, descending: Bool)? {
+        let patterns: [(pattern: String, tableGroup: Int, colGroup: Int)] = [
+            ("(?:order|sort) (?:by )?(\\w+) (?:in|from) (\\w+)", 2, 1),
+            ("sort (\\w+) by (\\w+)", 1, 2),
+        ]
+
+        for (pattern, tg, cg) in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)),
+               match.numberOfRanges >= 3,
+               let tableRange = Range(match.range(at: tg), in: lowercased),
+               let colRange = Range(match.range(at: cg), in: lowercased) {
+                let desc = lowercased.contains("desc") || lowercased.contains("descending") || lowercased.contains("highest")
+                return (table: String(lowercased[tableRange]), column: String(lowercased[colRange]), descending: desc)
+            }
+        }
+        return nil
+    }
+
     /// Extracts "distinct [column] in [table]" or "unique [column] from [table]"
     static func extractDistinctPattern(from lowercased: String) -> (table: String, column: String)? {
         let patterns = [

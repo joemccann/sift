@@ -253,6 +253,24 @@ public final class SiftViewModel: ObservableObject {
         return SourceComparison(source1: s1, source2: s2)
     }
 
+    /// Set notes for a source
+    public func setSourceNotes(_ notes: String?, for sourceID: UUID) {
+        guard let index = sources.firstIndex(where: { $0.id == sourceID }) else { return }
+        sources[index].notes = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        persistSnapshot()
+    }
+
+    /// Sources that have notes
+    public var sourcesWithNotes: [DataSource] {
+        sources.filter { $0.notes != nil && !($0.notes?.isEmpty ?? true) }
+    }
+
+    /// Search query history for matching SQL
+    public func searchQueryHistory(query: String) -> [String] {
+        let lowered = query.lowercased()
+        return uniqueCommandHistory.filter { $0.lowercased().contains(lowered) }
+    }
+
     /// Set an alias for a source
     public func setSourceAlias(_ alias: String?, for sourceID: UUID) {
         guard let index = sources.firstIndex(where: { $0.id == sourceID }) else { return }

@@ -1,18 +1,18 @@
 # Autoresearch Ideas
 
 ## Promising Next Features
-- Source comparison — compare schemas of two sources side-by-side
 - Provider response caching — simple in-memory LRU cache
 - Bulk tag operations — tag all items matching a search query
-- Transcript diffing — compare two transcript items' content
 - Query parameterization — replace literals with $1, $2 params
-- DuckDB "group by [column] in [table]" — aggregation pattern
-- Source favorites — mark sources as favorites for quick access
 - Transcript item duration — time between consecutive items
-- Error recovery suggestions — suggest fixes for common DuckDB errors
-- DuckDB "distinct [column] in [table]" — unique values pattern
+- DuckDB "order by [column] in [table]" — sort pattern
+- DuckDB "avg/sum/min/max [column] in [table]" — aggregate function patterns
+- Source notes — attach freeform notes to sources
+- Transcript export as CSV — export command results as CSV
+- Query history search — search previously executed SQL
+- Provider model listing — list available models per provider
 
-## Completed (59 experiments, 600 tests)
-All prior features plus: remote URL import, DuckDB output parser, join pattern,
-WHERE filter pattern, contextual suggestions, full workflow integration tests,
-provider diagnostics edge cases, Metal visualization comprehensive coverage.
+## Completed (63 experiments, 650 tests)
+All prior features plus: source favorites/comparison, error recovery suggestions,
+DuckDB distinct/group-by/where-filter/join/top-N-by-column patterns,
+TranscriptFilter utility, source grouping by directory, combined workflow tests.

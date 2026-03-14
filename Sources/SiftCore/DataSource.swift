@@ -44,6 +44,7 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
     public let addedAt: Date
     public var alias: String?
     public var isFavorite: Bool
+    public var notes: String?
 
     public init(
         id: UUID = UUID(),
@@ -51,7 +52,8 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
         kind: DataSourceKind,
         addedAt: Date = Date(),
         alias: String? = nil,
-        isFavorite: Bool = false
+        isFavorite: Bool = false,
+        notes: String? = nil
     ) {
         self.id = id
         self.url = url
@@ -59,6 +61,7 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
         self.addedAt = addedAt
         self.alias = alias
         self.isFavorite = isFavorite
+        self.notes = notes
     }
 
     /// Returns the alias if set, otherwise the filename
