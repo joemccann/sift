@@ -742,3 +742,125 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(source.path, "/some/deep/path/data.parquet")
     }
 }
+
+// MARK: - Export and Status commands
+
+final class ExportStatusCommandTests: XCTestCase {
+    func testExportCommandReturnsExportTranscript() {
+        let action = AssistantPlanner.plan(prompt: "/export", source: nil)
+        XCTAssertEqual(action, .exportTranscript)
+    }
+
+    func testExportCommandIsCaseInsensitive() {
+        let action = AssistantPlanner.plan(prompt: "/EXPORT", source: nil)
+        XCTAssertEqual(action, .exportTranscript)
+    }
+
+    func testStatusCommandReturnsShowStatus() {
+        let action = AssistantPlanner.plan(prompt: "/status", source: nil)
+        XCTAssertEqual(action, .showStatus)
+    }
+
+    func testHelpIncludesExportAndStatus() {
+        let action = AssistantPlanner.plan(prompt: "/help", source: nil)
+        guard case let .assistantReply(reply) = action else {
+            return XCTFail("Expected assistant reply")
+        }
+        XCTAssertTrue(reply.contains("/export"))
+        XCTAssertTrue(reply.contains("/status"))
+    }
+}
+
+// MARK: - PromptLibrary
+
+final class PromptLibraryTests: XCTestCase {
+    func testNoSourceReturnsGenericChips() {
+        let chips = PromptLibrary.prompts(for: nil)
+        XCTAssertFalse(chips.isEmpty)
+        XCTAssertTrue(chips.contains(where: { $0.title.contains("parquet") }))
+    }
+
+    func testParquetSourceReturnsPreviewChip() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let chips = PromptLibrary.prompts(for: source)
+        XCTAssertTrue(chips.contains(where: { $0.title.contains("Preview") }))
+        XCTAssertTrue(chips.contains(where: { $0.title.contains("schema") }))
+    }
+
+    func testCSVSourceReturnsCSVChips() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv)
+        let chips = PromptLibrary.prompts(for: source)
+        XCTAssertTrue(chips.contains(where: { $0.title.contains("Preview") }))
+        XCTAssertTrue(chips.contains(where: { $0.title.contains("Summarize") }))
+    }
+
+    func testJSONSourceReturnsJSONChips() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let chips = PromptLibrary.prompts(for: source)
+        XCTAssertTrue(chips.contains(where: { $0.title.contains("Preview") }))
+    }
+
+    func testDuckDBSourceReturnsDuckDBChips() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let chips = PromptLibrary.prompts(for: source)
+        XCTAssertTrue(chips.contains(where: { $0.title.contains("tables") }))
+        XCTAssertTrue(chips.contains(where: { $0.title.contains("Database") }))
+    }
+
+    func testPromptChipHasUniqueIDs() {
+        let chips = PromptLibrary.prompts(for: nil)
+        let ids = Set(chips.map(\.id))
+        XCTAssertEqual(ids.count, chips.count)
+    }
+}
+
+// MARK: - MetalWorkspaceSnapshot
+
+final class MetalWorkspaceSnapshotTests: XCTestCase {
+    func testSnapshotCodableRoundTrip() throws {
+        let snapshot = MetalWorkspaceSnapshot(
+            destination: .assistant,
+            provider: .claude,
+            sourceKind: .json,
+            sourceCount: 2,
+            transcriptCount: 5,
+            providerReadiness: 1,
+            executionState: .success,
+            commandDurationMilliseconds: 150,
+            commandOutputBytes: 512,
+            isRunning: false
+        )
+
+        let data = try JSONEncoder().encode(snapshot)
+        let restored = try JSONDecoder().decode(MetalWorkspaceSnapshot.self, from: data)
+        XCTAssertEqual(restored, snapshot)
+    }
+
+    func testSnapshotEquality() {
+        let a = MetalWorkspaceSnapshot(
+            destination: .assistant,
+            provider: .claude,
+            sourceKind: .parquet,
+            sourceCount: 1,
+            transcriptCount: 3,
+            providerReadiness: 1,
+            executionState: .idle,
+            commandDurationMilliseconds: 0,
+            commandOutputBytes: 0,
+            isRunning: false
+        )
+        let b = MetalWorkspaceSnapshot(
+            destination: .assistant,
+            provider: .claude,
+            sourceKind: .parquet,
+            sourceCount: 1,
+            transcriptCount: 3,
+            providerReadiness: 1,
+            executionState: .idle,
+            commandDurationMilliseconds: 0,
+            commandOutputBytes: 0,
+            isRunning: false
+        )
+        XCTAssertEqual(a, b)
+    }
+}

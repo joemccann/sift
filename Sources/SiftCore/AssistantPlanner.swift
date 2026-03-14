@@ -23,6 +23,8 @@ public enum AssistantAction: Equatable, Sendable {
     case copyLastResult
     case rerunCommand(index: Int?)
     case showHistory
+    case exportTranscript
+    case showStatus
 }
 
 public enum PromptLibrary {
@@ -88,6 +90,14 @@ public enum AssistantPlanner {
             return .showHistory
         }
 
+        if trimmed.caseInsensitiveCompare("/export") == .orderedSame {
+            return .exportTranscript
+        }
+
+        if trimmed.caseInsensitiveCompare("/status") == .orderedSame {
+            return .showStatus
+        }
+
         if trimmed.caseInsensitiveCompare("What can you do?") == .orderedSame || trimmed.caseInsensitiveCompare("/help") == .orderedSame {
             return .assistantReply(
                 """
@@ -99,8 +109,10 @@ public enum AssistantPlanner {
                 • `/copy` — Copy the last query result to the clipboard
                 • `/rerun` — Re-execute the last command (or `/rerun 2` for the 2nd-to-last)
                 • `/history` — Show recent commands
+                • `/export` — Copy full transcript to clipboard as Markdown
                 • `/clear` — Clear the conversation transcript
                 • `/sources` — List all attached data sources
+                • `/status` — Show workspace status summary
                 • `/help` — Show this help message
 
                 **Quick Actions** (when a source is attached)

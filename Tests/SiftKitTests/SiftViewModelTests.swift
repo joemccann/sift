@@ -854,6 +854,85 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.searchResults.isEmpty)
     }
 
+    func testExportTranscriptCopiesToClipboard() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "Welcome", body: "Hello"),
+                TranscriptItem(role: .user, title: "You", body: "Hi there"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/export"
+        await viewModel.sendPrompt()
+
+        let exported = viewModel.transcript.filter { $0.title == "Exported" }
+        XCTAssertFalse(exported.isEmpty)
+        XCTAssertTrue(exported.last?.body.contains("clipboard") == true)
+    }
+
+    func testFormatTranscriptAsMarkdownIncludesSQL() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "Preview", body: "Running query",
+                               kind: .commandPreview(sql: "SELECT 42;", sourceName: "test.duckdb")),
+                TranscriptItem(role: .assistant, title: "Result", body: "Done",
+                               kind: .commandResult(exitCode: 0, stdout: "42\n", stderr: "")),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let markdown = viewModel.formatTranscriptAsMarkdown()
+        XCTAssertTrue(markdown.contains("SELECT 42;"))
+        XCTAssertTrue(markdown.contains("test.duckdb"))
+        XCTAssertTrue(markdown.contains("42\n"))
+    }
+
+    func testStatusCommandShowsWorkspaceInfo() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/test.parquet"))
+
+        viewModel.composerText = "/status"
+        await viewModel.sendPrompt()
+
+        let statusItems = viewModel.transcript.filter { $0.title == "Status" }
+        XCTAssertFalse(statusItems.isEmpty)
+        let body = statusItems.last!.body
+        XCTAssertTrue(body.contains("Sources: 1"))
+        XCTAssertTrue(body.contains("test.parquet"))
+        XCTAssertTrue(body.contains("Claude"))
+    }
+
+    func testPromptChipsReturnedForSelectedSource() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // No source — generic chips
+        XCTAssertFalse(viewModel.promptChips.isEmpty)
+
+        // With source
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/test.parquet"))
+        let chips = viewModel.promptChips
+        XCTAssertTrue(chips.contains(where: { $0.title.contains("Preview") }))
+    }
+
     func testMetalSnapshotReflectsSelectedSourceAndExecutionOutcome() async {
         let result = DuckDBExecutionResult(
             binaryPath: "/opt/homebrew/bin/duckdb",

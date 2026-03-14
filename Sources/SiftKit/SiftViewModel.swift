@@ -355,6 +355,29 @@ public final class SiftViewModel: ObservableObject {
             removeThinkingItem(thinkingItem.id)
             copyLastResultToClipboard()
 
+        case .exportTranscript:
+            removeThinkingItem(thinkingItem.id)
+            exportTranscriptToClipboard()
+
+        case .showStatus:
+            let statusLines = [
+                "**Workspace Status**",
+                "",
+                "• Sources: \(sources.count)",
+                "• Active source: \(selectedSource?.displayName ?? "none")",
+                "• Provider: \(settings.defaultProvider.displayName)",
+                "• Transcript items: \(transcript.count)",
+                "• Commands run: \(transcript.filter { if case .commandResult = $0.kind { return true }; return false }.count)",
+                "• Last execution: \(lastExecution != nil ? (lastExecution!.exitCode == 0 ? "✓ success" : "✗ failure") : "none")",
+            ]
+            replaceThinkingItem(thinkingItem.id, with:
+                TranscriptItem(
+                    role: .assistant,
+                    title: "Status",
+                    body: statusLines.joined(separator: "\n")
+                )
+            )
+
         case .showHistory:
             let commands = transcript.compactMap { item -> String? in
                 switch item.kind {
@@ -592,6 +615,53 @@ public final class SiftViewModel: ObservableObject {
                 )
             )
         }
+    }
+
+    public func exportTranscriptToClipboard() {
+        let markdown = formatTranscriptAsMarkdown()
+        guard !markdown.isEmpty else {
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Nothing to Export",
+                    body: "The transcript is empty."
+                )
+            )
+            return
+        }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(markdown, forType: .string)
+        appendTranscript(
+            TranscriptItem(
+                role: .system,
+                title: "Exported",
+                body: "Transcript (\(transcript.count) items, \(markdown.count) characters) copied to clipboard as Markdown."
+            )
+        )
+    }
+
+    public func formatTranscriptAsMarkdown() -> String {
+        transcript.map { item in
+            var line = "### \(item.title)\n\n\(item.body)"
+            switch item.kind {
+            case let .commandPreview(sql, sourceName):
+                line += "\n\n```sql\n\(sql)\n```\n\nSource: \(sourceName)"
+            case let .rawCommandPreview(command):
+                line += "\n\n```\nduckdb \(command)\n```"
+            case let .commandResult(exitCode, stdout, stderr):
+                if !stdout.isEmpty {
+                    line += "\n\n```\n\(stdout)\n```"
+                }
+                if !stderr.isEmpty {
+                    line += "\n\nStderr:\n```\n\(stderr)\n```"
+                }
+                line += "\n\nExit code: \(exitCode)"
+            default:
+                break
+            }
+            return line
+        }.joined(separator: "\n\n---\n\n")
     }
 
     public func copyLastResultToClipboard() {
