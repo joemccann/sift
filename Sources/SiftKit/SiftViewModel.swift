@@ -824,6 +824,25 @@ public final class SiftViewModel: ObservableObject {
         return Array(transcript[start..<end])
     }
 
+    /// Search for sources by name
+    public func findSources(matching query: String) -> [DataSource] {
+        let lowered = query.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !lowered.isEmpty else { return sources }
+        return sources.filter { $0.displayName.lowercased().contains(lowered) }
+    }
+
+    /// Get unique SQL commands that have been executed (deduped)
+    public var uniqueCommandHistory: [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for item in transcript {
+            if case let .commandPreview(sql, _) = item.kind, seen.insert(sql).inserted {
+                result.append(sql)
+            }
+        }
+        return result
+    }
+
     /// Total number of transcript pages
     public func transcriptPageCount(pageSize: Int = 20) -> Int {
         guard pageSize > 0 else { return 0 }

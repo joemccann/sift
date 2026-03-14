@@ -1631,6 +1631,82 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "DuckDB Unavailable" }))
     }
 
+    // MARK: - Source search
+
+    func testFindSourcesByName() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/trades.csv"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices_v2.json"))
+
+        let matches = viewModel.findSources(matching: "prices")
+        XCTAssertEqual(matches.count, 2)
+    }
+
+    func testFindSourcesEmptyQueryReturnsAll() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        XCTAssertEqual(viewModel.findSources(matching: "").count, 1)
+    }
+
+    // MARK: - Unique command history
+
+    func testUniqueCommandHistoryDedupes() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/opt/homebrew/bin/duckdb",
+            arguments: [":memory:", "-table", "-c", "SELECT 1;"],
+            sql: "SELECT 1;",
+            stdout: "1\n",
+            stderr: "",
+            exitCode: 0,
+            startedAt: Date(),
+            endedAt: Date()
+        )
+
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/prices.parquet"))
+
+        // Run the same command twice
+        await viewModel.triggerPrompt("Preview this parquet file")
+        await viewModel.triggerPrompt("Preview this parquet file")
+
+        // Should only have one unique command even though run twice
+        let unique = viewModel.uniqueCommandHistory
+        XCTAssertEqual(unique.count, 1)
+    }
+
+    func testUniqueCommandHistoryEmptyWhenNoCommands() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertTrue(viewModel.uniqueCommandHistory.isEmpty)
+    }
+
     // MARK: - Transcript pagination
 
     func testTranscriptPageReturnsCorrectSlice() {
