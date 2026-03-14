@@ -1019,6 +1019,72 @@ final class DescribeTableTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB memory and extensions
+
+final class DuckDBMemoryExtensionTests: XCTestCase {
+    func testMemoryUsagePatternUsesPragma() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "Show memory usage", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("database_size"))
+    }
+
+    func testExtensionsPatternUsesExtensionsQuery() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "Show installed extensions", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("duckdb_extensions()"))
+    }
+
+    func testSettingsPatternUsesSettingsQuery() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/market.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "DuckDB settings", source: source)
+
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command plan, got \(action)")
+        }
+
+        XCTAssertTrue(plan.sql.contains("duckdb_settings()"))
+    }
+}
+
+// MARK: - DataSource file info
+
+final class DataSourceFileInfoTests: XCTestCase {
+    func testFileSizeDescriptionForMissingFile() {
+        let source = DataSource(url: URL(fileURLWithPath: "/nonexistent/file.parquet"), kind: .parquet)
+        XCTAssertEqual(source.fileSizeDescription, "unknown size")
+    }
+
+    func testFileSizeDescriptionForExistingFile() throws {
+        let tmpPath = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".parquet")
+        let data = Data(repeating: 0, count: 2048)
+        try data.write(to: tmpPath)
+
+        let source = DataSource(url: tmpPath, kind: .parquet)
+        XCTAssertTrue(source.fileSizeDescription.contains("KB") || source.fileSizeDescription.contains("B"))
+
+        try? FileManager.default.removeItem(at: tmpPath)
+    }
+
+    func testDataSourceCodableRoundTrip() throws {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let data = try JSONEncoder().encode(source)
+        let restored = try JSONDecoder().decode(DataSource.self, from: data)
+        XCTAssertEqual(restored.id, source.id)
+        XCTAssertEqual(restored.kind, source.kind)
+        XCTAssertEqual(restored.displayName, source.displayName)
+    }
+}
+
 // MARK: - Random sampling
 
 final class RandomSamplingTests: XCTestCase {

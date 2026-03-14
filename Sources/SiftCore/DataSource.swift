@@ -33,6 +33,23 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
         url.path
     }
 
+    public var fileSizeDescription: String {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+              let size = attrs[.size] as? Int64 else {
+            return "unknown size"
+        }
+
+        if size < 1024 {
+            return "\(size) B"
+        } else if size < 1024 * 1024 {
+            return "\(size / 1024) KB"
+        } else if size < 1024 * 1024 * 1024 {
+            return String(format: "%.1f MB", Double(size) / (1024 * 1024))
+        } else {
+            return String(format: "%.2f GB", Double(size) / (1024 * 1024 * 1024))
+        }
+    }
+
     public static func from(url: URL) -> DataSource? {
         switch url.pathExtension.lowercased() {
         case "parquet":

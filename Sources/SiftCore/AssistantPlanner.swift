@@ -502,6 +502,36 @@ public enum AssistantPlanner {
             )
         }
 
+        if lowercased.contains("memory") && (lowercased.contains("usage") || lowercased.contains("info")) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "PRAGMA database_size;",
+                    explanation: "Showing memory and storage info for \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("extensions") || lowercased.contains("installed extensions") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT extension_name, installed, loaded FROM duckdb_extensions() WHERE installed;",
+                    explanation: "Listing installed extensions for \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("settings") && !lowercased.contains("show") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT name, value, description FROM duckdb_settings() LIMIT 25;",
+                    explanation: "Showing DuckDB configuration settings for \(source.displayName)."
+                )
+            )
+        }
+
         if let tableName = extractDescribeTarget(from: lowercased) {
             return .command(
                 DuckDBCommandPlan(
