@@ -291,3 +291,87 @@ final class MetalDeviceCapabilitiesTests: XCTestCase {
         XCTAssertNil(caps)
     }
 }
+
+// MARK: - Visualization edge cases
+
+final class VisualizationEdgeCaseTests: XCTestCase {
+    func testVisualizationWithTranscriptsDestination() {
+        let snapshot = MetalWorkspaceSnapshot(
+            destination: .transcripts,
+            provider: .claude,
+            sourceKind: .parquet,
+            sourceCount: 1,
+            transcriptCount: 3,
+            providerReadiness: 1,
+            executionState: .idle,
+            commandDurationMilliseconds: 0,
+            commandOutputBytes: 0,
+            isRunning: false
+        )
+
+        let viz = MetalWorkspaceVisualization(snapshot: snapshot, signalCount: 16)
+        XCTAssertEqual(viz.signalBars.count, 16)
+        XCTAssertTrue(viz.signalBars.allSatisfy { $0 >= 0 && $0 <= 1 })
+    }
+
+    func testVisualizationWithSetupDestination() {
+        let snapshot = MetalWorkspaceSnapshot(
+            destination: .setup,
+            provider: .gemini,
+            sourceKind: nil,
+            sourceCount: 0,
+            transcriptCount: 1,
+            providerReadiness: 0,
+            executionState: .idle,
+            commandDurationMilliseconds: 0,
+            commandOutputBytes: 0,
+            isRunning: false
+        )
+
+        let viz = MetalWorkspaceVisualization(snapshot: snapshot, signalCount: 24)
+        XCTAssertEqual(viz.signalBars.count, 24)
+        XCTAssertEqual(viz.runIntensity, 0)
+    }
+
+    func testVisualizationWithLargeOutput() {
+        let snapshot = MetalWorkspaceSnapshot(
+            destination: .assistant,
+            provider: .openAI,
+            sourceKind: .duckdb,
+            sourceCount: 5,
+            transcriptCount: 50,
+            providerReadiness: 3,
+            executionState: .success,
+            commandDurationMilliseconds: 5000,
+            commandOutputBytes: 100_000,
+            isRunning: false
+        )
+
+        let viz = MetalWorkspaceVisualization(snapshot: snapshot, signalCount: 48)
+        XCTAssertEqual(viz.signalBars.count, 48)
+        XCTAssertTrue(viz.signalBars.allSatisfy { $0 >= 0 && $0 <= 1 })
+        XCTAssertLessThanOrEqual(viz.commandOutputScale, 1.0)
+    }
+
+    func testVisualizationSourceDensityScaling() {
+        let noSources = MetalWorkspaceVisualization(
+            snapshot: MetalWorkspaceSnapshot(
+                destination: .assistant, provider: .claude, sourceKind: nil,
+                sourceCount: 0, transcriptCount: 0, providerReadiness: 0,
+                executionState: .idle, commandDurationMilliseconds: 0,
+                commandOutputBytes: 0, isRunning: false
+            ), signalCount: 12
+        )
+
+        let manySources = MetalWorkspaceVisualization(
+            snapshot: MetalWorkspaceSnapshot(
+                destination: .assistant, provider: .claude, sourceKind: .parquet,
+                sourceCount: 10, transcriptCount: 0, providerReadiness: 0,
+                executionState: .idle, commandDurationMilliseconds: 0,
+                commandOutputBytes: 0, isRunning: false
+            ), signalCount: 12
+        )
+
+        XCTAssertLessThan(noSources.sourceDensity, manySources.sourceDensity)
+    }
+}
