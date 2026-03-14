@@ -1890,6 +1890,35 @@ final class DataSourceValidationTests: XCTestCase {
     }
 }
 
+// MARK: - DataSource DuckDB read expression
+
+final class DataSourceReadExpressionTests: XCTestCase {
+    func testParquetReadExpression() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        XCTAssertEqual(source.duckDBReadExpression, "read_parquet('/tmp/data.parquet')")
+    }
+
+    func testCSVReadExpression() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv)
+        XCTAssertEqual(source.duckDBReadExpression, "read_csv('/tmp/data.csv')")
+    }
+
+    func testJSONReadExpression() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        XCTAssertEqual(source.duckDBReadExpression, "read_json('/tmp/data.json')")
+    }
+
+    func testDuckDBHasNoReadExpression() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        XCTAssertNil(source.duckDBReadExpression)
+    }
+
+    func testReadExpressionEscapesApostrophe() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/John's data.parquet"), kind: .parquet)
+        XCTAssertTrue(source.duckDBReadExpression?.contains("John''s") == true)
+    }
+}
+
 // MARK: - DuckDB summarize [tablename]
 
 final class DuckDBSummarizeTableTests: XCTestCase {
