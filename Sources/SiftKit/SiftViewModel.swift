@@ -527,6 +527,26 @@ public final class SiftViewModel: ObservableObject {
                 )
             )
 
+        case .showTags:
+            let tags = allTags
+            let body: String
+            if tags.isEmpty {
+                body = "No tags in use. Add tags to transcript items to organize them."
+            } else {
+                let tagCounts = tags.map { tag in
+                    let count = transcriptItems(withTag: tag).count
+                    return "• **\(tag)** (\(count) item\(count == 1 ? "" : "s"))"
+                }
+                body = "**All Tags** (\(tags.count))\n\n" + tagCounts.joined(separator: "\n")
+            }
+            replaceThinkingItem(thinkingItem.id, with:
+                TranscriptItem(
+                    role: .assistant,
+                    title: "Tags",
+                    body: body
+                )
+            )
+
         case .resetWorkspace:
             removeThinkingItem(thinkingItem.id)
             resetWorkspace()

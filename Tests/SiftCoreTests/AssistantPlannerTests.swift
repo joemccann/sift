@@ -2197,6 +2197,57 @@ final class DataSourceAliasTests: XCTestCase {
     }
 }
 
+// MARK: - /tags command
+
+final class TagsCommandTests: XCTestCase {
+    func testTagsCommandReturnsShowTags() {
+        let action = AssistantPlanner.plan(prompt: "/tags", source: nil)
+        XCTAssertEqual(action, .showTags)
+    }
+
+    func testTagsInCommandRegistry() {
+        XCTAssertTrue(CommandRegistry.allCommands.contains(where: { $0.command == "/tags" }))
+    }
+}
+
+// MARK: - DataSource query builders
+
+final class DataSourceQueryBuilderTests: XCTestCase {
+    func testSelectQueryForParquet() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let sql = source.selectQuery(limit: 10)
+        XCTAssertEqual(sql, "SELECT * FROM read_parquet('/tmp/data.parquet') LIMIT 10;")
+    }
+
+    func testSelectQueryWithColumns() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv)
+        let sql = source.selectQuery(columns: "name, price")
+        XCTAssertEqual(sql, "SELECT name, price FROM read_csv('/tmp/data.csv');")
+    }
+
+    func testSelectQueryForDuckDBReturnsNil() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        XCTAssertNil(source.selectQuery())
+    }
+
+    func testCountQueryForJSON() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let sql = source.countQuery()
+        XCTAssertEqual(sql, "SELECT COUNT(*) AS row_count FROM read_json('/tmp/data.json');")
+    }
+
+    func testCountQueryForDuckDBReturnsNil() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        XCTAssertNil(source.countQuery())
+    }
+
+    func testSelectQueryWithNoLimit() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let sql = source.selectQuery()
+        XCTAssertEqual(sql, "SELECT * FROM read_parquet('/tmp/data.parquet');")
+    }
+}
+
 // MARK: - MarkdownDetector
 
 final class MarkdownDetectorTests: XCTestCase {

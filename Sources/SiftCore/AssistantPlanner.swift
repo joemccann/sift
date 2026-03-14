@@ -33,6 +33,7 @@ public enum AssistantAction: Equatable, Sendable {
     case showSourceInfo
     case showPinnedItems
     case resetWorkspace
+    case showTags
 }
 
 public struct CommandInfo: Equatable, Sendable {
@@ -65,6 +66,7 @@ public enum CommandRegistry {
         CommandInfo(command: "/info", description: "Show active source details"),
         CommandInfo(command: "/pins", description: "Show pinned items"),
         CommandInfo(command: "/reset", description: "Reset workspace (clear sources, bookmarks, transcript)"),
+        CommandInfo(command: "/tags", description: "Show all tags used in the transcript"),
     ]
 
     /// Returns commands matching a prefix (for tab completion)
@@ -178,6 +180,10 @@ public enum AssistantPlanner {
 
         if trimmed.caseInsensitiveCompare("/reset") == .orderedSame {
             return .resetWorkspace
+        }
+
+        if trimmed.caseInsensitiveCompare("/tags") == .orderedSame {
+            return .showTags
         }
 
         if trimmed.caseInsensitiveCompare("What can you do?") == .orderedSame || trimmed.caseInsensitiveCompare("/help") == .orderedSame {

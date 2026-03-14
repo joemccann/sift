@@ -111,6 +111,25 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
         return "\(readFn)('\(escapedPath)')"
     }
 
+    /// Build a SELECT query for this source with optional limit
+    public func selectQuery(columns: String = "*", limit: Int? = nil) -> String? {
+        guard let readExpr = duckDBReadExpression else {
+            // DuckDB database — would need a table name
+            return nil
+        }
+        var sql = "SELECT \(columns) FROM \(readExpr)"
+        if let limit {
+            sql += " LIMIT \(limit)"
+        }
+        return sql + ";"
+    }
+
+    /// Build a COUNT query for this source
+    public func countQuery() -> String? {
+        guard let readExpr = duckDBReadExpression else { return nil }
+        return "SELECT COUNT(*) AS row_count FROM \(readExpr);"
+    }
+
     public static func from(url: URL) -> DataSource? {
         switch url.pathExtension.lowercased() {
         case "parquet":

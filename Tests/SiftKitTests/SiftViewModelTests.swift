@@ -1739,6 +1739,46 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.allTags, ["a", "b", "z"])
     }
 
+    func testTagsCommandShowsAllTags() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello", tags: ["sql", "important"]),
+                TranscriptItem(role: .user, title: "You", body: "Q", tags: ["sql"]),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/tags"
+        await viewModel.sendPrompt()
+
+        let tagItems = viewModel.transcript.filter { $0.title == "Tags" }
+        XCTAssertFalse(tagItems.isEmpty)
+        let body = tagItems.last!.body
+        XCTAssertTrue(body.contains("important"))
+        XCTAssertTrue(body.contains("sql"))
+    }
+
+    func testTagsCommandWithNoTagsShowsGuidance() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "Hello"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.composerText = "/tags"
+        await viewModel.sendPrompt()
+
+        let tagItems = viewModel.transcript.filter { $0.title == "Tags" }
+        XCTAssertTrue(tagItems.last?.body.contains("No tags") == true)
+    }
+
     // MARK: - Source aliases
 
     func testSetSourceAlias() {
