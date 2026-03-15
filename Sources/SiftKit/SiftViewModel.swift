@@ -260,6 +260,37 @@ public final class SiftViewModel: ObservableObject {
         persistSnapshot()
     }
 
+    /// Add a command alias
+    public func addCommandAlias(name: String, sql: String) {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSQL = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, !trimmedSQL.isEmpty else { return }
+        guard !settings.commandAliases.contains(where: { $0.name == trimmedName }) else { return }
+        settings.commandAliases.append(CommandAlias(name: trimmedName, sql: trimmedSQL))
+        persistSnapshot()
+    }
+
+    /// Remove a command alias by name
+    public func removeCommandAlias(name: String) {
+        settings.commandAliases.removeAll(where: { $0.name == name })
+        persistSnapshot()
+    }
+
+    /// Look up a command alias by name
+    public func resolveAlias(_ name: String) -> String? {
+        settings.commandAliases.first(where: { $0.name == name })?.sql
+    }
+
+    /// Check for duplicate user messages in transcript
+    public var hasDuplicateMessages: Bool {
+        TranscriptDeduplicator.hasDuplicates(in: transcript)
+    }
+
+    /// Export command results as CSV text
+    public var resultsAsCSV: String {
+        TranscriptExporter.resultsAsCSV(from: transcript)
+    }
+
     /// Sources that have notes
     public var sourcesWithNotes: [DataSource] {
         sources.filter { $0.notes != nil && !($0.notes?.isEmpty ?? true) }

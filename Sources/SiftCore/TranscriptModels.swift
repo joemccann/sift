@@ -113,6 +113,46 @@ public struct TranscriptItem: Identifiable, Equatable, Sendable, Codable {
     }
 }
 
+public enum TranscriptExporter {
+    /// Export command results as CSV text
+    public static func resultsAsCSV(from items: [TranscriptItem]) -> String {
+        var lines = ["sql,exit_code,stdout_preview"]
+        for item in items {
+            if case let .commandResult(exitCode, stdout, _) = item.kind {
+                let preview = stdout.prefix(200).replacingOccurrences(of: "\"", with: "\"\"").replacingOccurrences(of: "\n", with: " ")
+                // Find the matching command preview for this result
+                lines.append("\"\(exitCode)\",\"\(preview)\"")
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Export transcript as plain text
+    public static func asPlainText(from items: [TranscriptItem]) -> String {
+        items.map { "[\($0.role.rawValue)] \($0.title): \($0.body)" }.joined(separator: "\n\n")
+    }
+}
+
+public enum TranscriptDeduplicator {
+    /// Find duplicate user messages in the transcript
+    public static func duplicateMessages(in items: [TranscriptItem]) -> [String] {
+        let userMessages = items.filter { $0.role == .user }.map(\.body)
+        var seen = Set<String>()
+        var dupes = Set<String>()
+        for msg in userMessages {
+            if !seen.insert(msg).inserted {
+                dupes.insert(msg)
+            }
+        }
+        return Array(dupes).sorted()
+    }
+
+    /// Check if the transcript has any duplicate user messages
+    public static func hasDuplicates(in items: [TranscriptItem]) -> Bool {
+        !duplicateMessages(in: items).isEmpty
+    }
+}
+
 public enum TranscriptTiming {
     /// Calculate the time gap between each consecutive pair of items
     public static func itemDurations(in items: [TranscriptItem]) -> [(item: TranscriptItem, gapSeconds: TimeInterval)] {

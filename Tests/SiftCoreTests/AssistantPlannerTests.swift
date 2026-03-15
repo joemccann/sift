@@ -3610,3 +3610,111 @@ final class PlannerAllSourceTypesTests: XCTestCase {
     }
 }
 
+// MARK: - TranscriptExporter
+
+final class TranscriptExporterTests: XCTestCase {
+    func testResultsAsCSVFormatsCorrectly() {
+        let items = [
+            TranscriptItem(role: .assistant, title: "R", body: "ok",
+                           kind: .commandResult(exitCode: 0, stdout: "Alice\nBob", stderr: "")),
+            TranscriptItem(role: .assistant, title: "R", body: "err",
+                           kind: .commandResult(exitCode: 1, stdout: "", stderr: "error")),
+        ]
+        let csv = TranscriptExporter.resultsAsCSV(from: items)
+        XCTAssertTrue(csv.contains("sql,exit_code,stdout_preview"))
+        XCTAssertTrue(csv.contains("0"))
+        XCTAssertTrue(csv.contains("1"))
+    }
+
+    func testResultsAsCSVEmptyForNoResults() {
+        let items = [TranscriptItem(role: .user, title: "You", body: "Hello")]
+        let csv = TranscriptExporter.resultsAsCSV(from: items)
+        // Should only have header
+        XCTAssertEqual(csv.components(separatedBy: "\n").count, 1)
+    }
+
+    func testAsPlainText() {
+        let items = [
+            TranscriptItem(role: .user, title: "You", body: "Hello"),
+            TranscriptItem(role: .assistant, title: "A", body: "World"),
+        ]
+        let text = TranscriptExporter.asPlainText(from: items)
+        XCTAssertTrue(text.contains("[user] You: Hello"))
+        XCTAssertTrue(text.contains("[assistant] A: World"))
+    }
+}
+
+// MARK: - TranscriptDeduplicator
+
+final class TranscriptDeduplicatorTests: XCTestCase {
+    func testDetectsDuplicateUserMessages() {
+        let items = [
+            TranscriptItem(role: .user, title: "You", body: "Hello"),
+            TranscriptItem(role: .assistant, title: "A", body: "Hi"),
+            TranscriptItem(role: .user, title: "You", body: "Hello"),
+        ]
+        let dupes = TranscriptDeduplicator.duplicateMessages(in: items)
+        XCTAssertEqual(dupes, ["Hello"])
+    }
+
+    func testNoDuplicatesReturnsEmpty() {
+        let items = [
+            TranscriptItem(role: .user, title: "You", body: "Hello"),
+            TranscriptItem(role: .user, title: "You", body: "World"),
+        ]
+        XCTAssertTrue(TranscriptDeduplicator.duplicateMessages(in: items).isEmpty)
+    }
+
+    func testHasDuplicates() {
+        let withDupes = [
+            TranscriptItem(role: .user, title: "You", body: "Q"),
+            TranscriptItem(role: .user, title: "You", body: "Q"),
+        ]
+        XCTAssertTrue(TranscriptDeduplicator.hasDuplicates(in: withDupes))
+
+        let noDupes = [TranscriptItem(role: .user, title: "You", body: "Q")]
+        XCTAssertFalse(TranscriptDeduplicator.hasDuplicates(in: noDupes))
+    }
+
+    func testIgnoresAssistantDuplicates() {
+        let items = [
+            TranscriptItem(role: .assistant, title: "A", body: "Reply"),
+            TranscriptItem(role: .assistant, title: "A", body: "Reply"),
+        ]
+        XCTAssertFalse(TranscriptDeduplicator.hasDuplicates(in: items))
+    }
+}
+
+// MARK: - CommandAlias model
+
+final class CommandAliasTests: XCTestCase {
+    func testCommandAliasCodableRoundTrip() throws {
+        let alias = CommandAlias(name: "trades", sql: "SELECT * FROM trades LIMIT 10;")
+        let data = try JSONEncoder().encode(alias)
+        let restored = try JSONDecoder().decode(CommandAlias.self, from: data)
+        XCTAssertEqual(restored.name, "trades")
+        XCTAssertEqual(restored.sql, "SELECT * FROM trades LIMIT 10;")
+    }
+
+    func testCommandAliasEquality() {
+        let id = UUID()
+        let a = CommandAlias(id: id, name: "x", sql: "SELECT 1;")
+        let b = CommandAlias(id: id, name: "x", sql: "SELECT 1;")
+        XCTAssertEqual(a, b)
+    }
+
+    func testSettingsWithAliasesCodableRoundTrip() throws {
+        var settings = AppSettings(hasCompletedSetup: true)
+        settings.commandAliases = [CommandAlias(name: "t", sql: "SHOW TABLES;")]
+        let data = try JSONEncoder().encode(settings)
+        let restored = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(restored.commandAliases.count, 1)
+        XCTAssertEqual(restored.commandAliases.first?.name, "t")
+    }
+
+    func testEmptyAliasesByDefault() {
+        let settings = AppSettings()
+        XCTAssertTrue(settings.commandAliases.isEmpty)
+    }
+}
+

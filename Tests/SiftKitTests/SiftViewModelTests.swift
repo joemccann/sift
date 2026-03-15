@@ -2073,6 +2073,102 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sources.first?.notes, "Some notes")
     }
 
+    // MARK: - Command aliases
+
+    func testAddAndResolveCommandAlias() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.addCommandAlias(name: "t", sql: "SHOW TABLES;")
+        XCTAssertEqual(viewModel.resolveAlias("t"), "SHOW TABLES;")
+        XCTAssertEqual(viewModel.settings.commandAliases.count, 1)
+    }
+
+    func testDuplicateAliasNameRejected() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.addCommandAlias(name: "t", sql: "SHOW TABLES;")
+        viewModel.addCommandAlias(name: "t", sql: "SELECT 1;") // duplicate name
+        XCTAssertEqual(viewModel.settings.commandAliases.count, 1)
+        XCTAssertEqual(viewModel.resolveAlias("t"), "SHOW TABLES;")
+    }
+
+    func testRemoveCommandAlias() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.addCommandAlias(name: "t", sql: "SHOW TABLES;")
+        viewModel.removeCommandAlias(name: "t")
+        XCTAssertNil(viewModel.resolveAlias("t"))
+    }
+
+    func testEmptyAliasNameRejected() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        viewModel.addCommandAlias(name: "", sql: "SELECT 1;")
+        XCTAssertTrue(viewModel.settings.commandAliases.isEmpty)
+    }
+
+    // MARK: - Deduplication
+
+    func testHasDuplicateMessages() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .user, title: "You", body: "Hello"),
+                TranscriptItem(role: .assistant, title: "A", body: "Hi"),
+                TranscriptItem(role: .user, title: "You", body: "Hello"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertTrue(viewModel.hasDuplicateMessages)
+    }
+
+    func testResultsAsCSV() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT 1;",
+            stdout: "1\n", stderr: "", exitCode: 0,
+            startedAt: Date(), endedAt: Date()
+        )
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+        await viewModel.triggerPrompt("Preview this parquet file")
+
+        let csv = viewModel.resultsAsCSV
+        XCTAssertTrue(csv.contains("sql,exit_code"))
+    }
+
     // MARK: - Source notes
 
     func testSetSourceNotes() {

@@ -112,6 +112,18 @@ public struct QueryExecutionStats: Codable, Equatable, Sendable {
     }
 }
 
+public struct CommandAlias: Codable, Equatable, Sendable, Identifiable {
+    public let id: UUID
+    public let name: String
+    public let sql: String
+
+    public init(id: UUID = UUID(), name: String, sql: String) {
+        self.id = id
+        self.name = name
+        self.sql = sql
+    }
+}
+
 public struct BookmarkedCommand: Codable, Equatable, Sendable, Identifiable {
     public let id: UUID
     public let sql: String
@@ -161,6 +173,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var bookmarks: [BookmarkedCommand]
     public var queryTemplates: [QueryTemplate]
     public var preferredAppearance: AppAppearance
+    public var commandAliases: [CommandAlias]
 
     public init(
         hasCompletedSetup: Bool = false,
@@ -168,7 +181,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         providerPreferences: [String: ProviderPreference] = [:],
         bookmarks: [BookmarkedCommand] = [],
         queryTemplates: [QueryTemplate] = [],
-        preferredAppearance: AppAppearance = .system
+        preferredAppearance: AppAppearance = .system,
+        commandAliases: [CommandAlias] = []
     ) {
         self.hasCompletedSetup = hasCompletedSetup
         self.defaultProvider = defaultProvider
@@ -176,6 +190,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.bookmarks = bookmarks
         self.queryTemplates = queryTemplates
         self.preferredAppearance = preferredAppearance
+        self.commandAliases = commandAliases
     }
 
     public func preference(for provider: ProviderKind) -> ProviderPreference {
