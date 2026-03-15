@@ -327,6 +327,29 @@ final class DuckDBAdapterTests: XCTestCase {
         XCTAssertNotEqual(DuckDBCLIError.invalidArguments("a"), DuckDBCLIError.invalidArguments("b"))
     }
 
+    func testParserRawArgumentParserErrorEquality() {
+        XCTAssertEqual(DuckDBRawArgumentParser.Error.unterminatedQuote, DuckDBRawArgumentParser.Error.unterminatedQuote)
+        XCTAssertNotEqual(DuckDBRawArgumentParser.Error.unterminatedQuote, DuckDBRawArgumentParser.Error.danglingEscape)
+    }
+
+    func testRequestForDuckDBIncludesReadonly() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/test.duckdb"), kind: .duckdb)
+        let plan = DuckDBCommandPlan(source: source, sql: "SHOW TABLES;", explanation: "test")
+        let request = DuckDBCLIExecutor.request(for: plan, binaryPath: "/usr/bin/duckdb")
+        XCTAssertTrue(request.arguments.contains("-readonly"))
+        XCTAssertTrue(request.arguments.contains("-table"))
+        XCTAssertTrue(request.arguments.contains("-c"))
+        XCTAssertEqual(request.arguments.count, 5) // path, -readonly, -table, -c, sql
+    }
+
+    func testRequestForParquetDoesNotIncludeReadonly() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let plan = DuckDBCommandPlan(source: source, sql: "SELECT 1;", explanation: "test")
+        let request = DuckDBCLIExecutor.request(for: plan, binaryPath: "/usr/bin/duckdb")
+        XCTAssertFalse(request.arguments.contains("-readonly"))
+        XCTAssertEqual(request.arguments.first, ":memory:")
+    }
+
     // MARK: - Execution result
 
     func testExecutionResultExitCodes() {

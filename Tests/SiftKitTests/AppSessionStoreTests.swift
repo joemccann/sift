@@ -278,6 +278,37 @@ final class AppSessionStoreTests: XCTestCase {
         try? FileManager.default.removeItem(at: rootURL)
     }
 
+    func testSaveAndLoadWithQueryHistory() throws {
+        let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let fileURL = rootURL.appendingPathComponent("session.json")
+        let store = AppSessionStore(fileURL: fileURL)
+
+        let snapshot = AppSessionSnapshot(
+            settings: AppSettings(hasCompletedSetup: true),
+            sources: [],
+            selectedSourceID: nil,
+            transcript: [
+                TranscriptItem(role: .assistant, title: "Preview", body: "ok",
+                               kind: .commandPreview(sql: "SELECT * FROM trades;", sourceName: "db")),
+                TranscriptItem(role: .assistant, title: "Result", body: "data",
+                               kind: .commandResult(exitCode: 0, stdout: "rows", stderr: "")),
+                TranscriptItem(role: .assistant, title: "Preview2", body: "ok2",
+                               kind: .commandPreview(sql: "SELECT COUNT(*) FROM trades;", sourceName: "db")),
+            ]
+        )
+
+        try store.saveSnapshot(snapshot)
+        let restored = store.loadSnapshot()
+
+        // Verify command previews survive round-trip
+        let history = QueryHistoryManager.commandHistory(from: restored?.transcript ?? [])
+        XCTAssertEqual(history.count, 2)
+        XCTAssertEqual(history[0].sql, "SELECT * FROM trades;")
+        XCTAssertEqual(history[1].sql, "SELECT COUNT(*) FROM trades;")
+
+        try? FileManager.default.removeItem(at: rootURL)
+    }
+
     func testSaveAndLoadMultipleSourceTypes() throws {
         let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let fileURL = rootURL.appendingPathComponent("session.json")

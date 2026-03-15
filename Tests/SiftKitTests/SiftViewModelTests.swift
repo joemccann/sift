@@ -2131,6 +2131,55 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.settings.commandAliases.isEmpty)
     }
 
+    // MARK: - Between pattern integration
+
+    func testBetweenPatternInDuckDB() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT * FROM trades WHERE price BETWEEN 50 AND 200 LIMIT 25;",
+            stdout: "data", stderr: "", exitCode: 0,
+            startedAt: Date(), endedAt: Date()
+        )
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"))
+        await viewModel.triggerPrompt("price between 50 and 200 in trades")
+
+        XCTAssertNotNil(viewModel.lastExecution)
+        XCTAssertEqual(viewModel.commandCount, 1)
+    }
+
+    // MARK: - Query history manager in ViewModel
+
+    func testFrequentCommandsFromViewModel() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT 1;",
+            stdout: "1", stderr: "", exitCode: 0,
+            startedAt: Date(), endedAt: Date()
+        )
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+
+        // Run same command multiple times
+        await viewModel.triggerPrompt("Preview this parquet file")
+        await viewModel.triggerPrompt("Preview this parquet file")
+        await viewModel.triggerPrompt("Count rows")
+
+        let frequent = QueryHistoryManager.frequentCommands(from: viewModel.transcript)
+        XCTAssertFalse(frequent.isEmpty)
+        XCTAssertGreaterThanOrEqual(frequent.first?.count ?? 0, 2)
+    }
+
     // MARK: - Full end-to-end workflow
 
     func testEndToEndQueryThenBookmarkThenExport() async {

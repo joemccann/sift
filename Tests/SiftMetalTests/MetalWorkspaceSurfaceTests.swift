@@ -462,6 +462,31 @@ final class VisualizationEdgeCaseTests: XCTestCase {
         XCTAssertEqual(idleViz.runIntensity, 0)
     }
 
+    func testVisualizationWithHighTranscriptCount() {
+        let snapshot = MetalWorkspaceSnapshot(
+            destination: .assistant, provider: .claude, sourceKind: .duckdb,
+            sourceCount: 3, transcriptCount: 100, providerReadiness: 2,
+            executionState: .success, commandDurationMilliseconds: 250,
+            commandOutputBytes: 5000, isRunning: false
+        )
+        let viz = MetalWorkspaceVisualization(snapshot: snapshot, signalCount: 32)
+        XCTAssertEqual(viz.signalBars.count, 32)
+        XCTAssertTrue(viz.signalBars.allSatisfy { $0 >= 0 && $0 <= 1 })
+        XCTAssertEqual(viz.transcriptDensity, 1.0) // Capped at 1
+    }
+
+    func testVisualizationWithZeroSignalCount() {
+        let snapshot = MetalWorkspaceSnapshot(
+            destination: .assistant, provider: .claude, sourceKind: nil,
+            sourceCount: 0, transcriptCount: 0, providerReadiness: 0,
+            executionState: .idle, commandDurationMilliseconds: 0,
+            commandOutputBytes: 0, isRunning: false
+        )
+        // Minimum signal count is enforced to 12
+        let viz = MetalWorkspaceVisualization(snapshot: snapshot, signalCount: 0)
+        XCTAssertGreaterThanOrEqual(viz.signalBars.count, 12)
+    }
+
     func testVisualizationNilSourceKind() {
         let snapshot = MetalWorkspaceSnapshot(
             destination: .assistant, provider: .claude, sourceKind: nil,

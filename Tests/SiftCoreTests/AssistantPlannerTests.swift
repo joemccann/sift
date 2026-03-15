@@ -4423,3 +4423,119 @@ final class QueryHistoryManagerTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB between pattern edge cases
+
+final class DuckDBBetweenEdgeCaseTests: XCTestCase {
+    func testBetweenWithDates() {
+        let result = AssistantPlanner.extractBetweenPattern(from: "date between 2024-01-01 and 2024-12-31 in events")
+        XCTAssertEqual(result?.column, "date")
+        XCTAssertEqual(result?.low, "2024-01-01")
+        XCTAssertEqual(result?.high, "2024-12-31")
+    }
+
+    func testBetweenWithDecimals() {
+        let result = AssistantPlanner.extractBetweenPattern(from: "price between 1.5 and 99.9 from trades")
+        XCTAssertEqual(result?.low, "1.5")
+        XCTAssertEqual(result?.high, "99.9")
+    }
+}
+
+// MARK: - QueryHistoryManager edge cases
+
+final class QueryHistoryManagerEdgeCaseTests: XCTestCase {
+    func testFrequentCommandsWithAllUnique() {
+        let items = [
+            TranscriptItem(role: .assistant, title: "P", body: "", kind: .commandPreview(sql: "A;", sourceName: "db")),
+            TranscriptItem(role: .assistant, title: "P", body: "", kind: .commandPreview(sql: "B;", sourceName: "db")),
+            TranscriptItem(role: .assistant, title: "P", body: "", kind: .commandPreview(sql: "C;", sourceName: "db")),
+        ]
+        let frequent = QueryHistoryManager.frequentCommands(from: items)
+        XCTAssertEqual(frequent.count, 3)
+        XCTAssertTrue(frequent.allSatisfy { $0.count == 1 })
+    }
+
+    func testRecentUniqueCommandsLimitSmaller() {
+        let items = (0..<10).map { i in
+            TranscriptItem(role: .assistant, title: "P", body: "", kind: .commandPreview(sql: "SQL\(i);", sourceName: "db"))
+        }
+        let recent = QueryHistoryManager.recentUniqueCommands(from: items, limit: 3)
+        XCTAssertEqual(recent.count, 3)
+    }
+
+    func testCommandHistoryIgnoresNonCommands() {
+        let items = [
+            TranscriptItem(role: .user, title: "You", body: "Hello"),
+            TranscriptItem(role: .assistant, title: "A", body: "Reply"),
+            TranscriptItem(role: .system, title: "Sys", body: "Info"),
+        ]
+        XCTAssertTrue(QueryHistoryManager.commandHistory(from: items).isEmpty)
+    }
+}
+
+// MARK: - SQL Formatter keyword coverage
+
+final class SQLFormatterKeywordCoverageTests: XCTestCase {
+    func testUppercaseJoinKeywords() {
+        let formatted = SQLFormatter.uppercaseKeywords(in: "select * from a inner join b on a.id = b.id left join c using (id);")
+        XCTAssertTrue(formatted.contains("INNER"))
+        XCTAssertTrue(formatted.contains("LEFT"))
+        XCTAssertTrue(formatted.contains("USING"))
+    }
+
+    func testUppercaseCaseWhen() {
+        let formatted = SQLFormatter.uppercaseKeywords(in: "select case when x > 0 then 'positive' else 'negative' end from t;")
+        XCTAssertTrue(formatted.contains("CASE"))
+        XCTAssertTrue(formatted.contains("WHEN"))
+        XCTAssertTrue(formatted.contains("THEN"))
+        XCTAssertTrue(formatted.contains("ELSE"))
+        XCTAssertTrue(formatted.contains("END"))
+    }
+
+    func testUppercaseAggregateFunctions() {
+        let formatted = SQLFormatter.uppercaseKeywords(in: "select count(*), sum(price), avg(volume), min(date), max(date) from trades;")
+        XCTAssertTrue(formatted.contains("COUNT"))
+        XCTAssertTrue(formatted.contains("SUM"))
+        XCTAssertTrue(formatted.contains("AVG"))
+        XCTAssertTrue(formatted.contains("MIN"))
+        XCTAssertTrue(formatted.contains("MAX"))
+    }
+}
+
+// MARK: - DuckDB column type additional
+
+final class DuckDBColumnTypeAdditionalTests: XCTestCase {
+    func testInt8Type() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "INT8"), .integer)
+    }
+
+    func testFloat4Type() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "FLOAT4"), .decimal)
+    }
+
+    func testVarcharWithLength() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "VARCHAR(100)"), .text)
+    }
+
+    func testTimestampTZ() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "TIMESTAMPTZ"), .timestamp)
+    }
+
+    func testInt64Type() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "INT64"), .integer)
+    }
+
+    func testDoublePrecision() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "DOUBLE PRECISION"), .decimal)
+    }
+}
+
+// MARK: - SQL formatter with DuckDB-specific keywords
+
+final class SQLFormatterDuckDBTests: XCTestCase {
+    func testUppercaseDescribeAndSummarize() {
+        let formatted = SQLFormatter.uppercaseKeywords(in: "describe trades; summarize orders;")
+        XCTAssertTrue(formatted.contains("DESCRIBE"))
+        XCTAssertTrue(formatted.contains("SUMMARIZE"))
+    }
+}
+

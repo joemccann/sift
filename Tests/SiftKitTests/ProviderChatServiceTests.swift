@@ -159,6 +159,30 @@ final class ProviderDiagnosticsEdgeCaseTests: XCTestCase {
         }
     }
 
+    func testStatusSummaryNeedsConfiguration() {
+        let status = ProviderStatus(provider: .gemini, cliInstalled: false, cliPath: nil, apiKeyPresent: false, environmentKeyPresent: false)
+        XCTAssertEqual(status.statusSummary, "Needs configuration")
+    }
+
+    func testStatusIDMatchesProvider() {
+        for provider in ProviderKind.allCases {
+            let status = ProviderStatus(provider: provider, cliInstalled: false, cliPath: nil, apiKeyPresent: false, environmentKeyPresent: false)
+            XCTAssertEqual(status.id, provider.rawValue)
+        }
+    }
+
+    func testProviderCLINames() {
+        let statuses = ProviderDiagnostics.detect(
+            environment: ["PATH": ""],
+            secretStore: MemorySecretStore(),
+            executableExists: { _ in false }
+        )
+        for status in statuses {
+            XCTAssertEqual(status.cliName, status.provider.cliCommand)
+            XCTAssertEqual(status.apiKeyName, status.provider.preferredAPIKeyEnvironmentName)
+        }
+    }
+
     func testStatusSummaryForCLIWithKey() {
         let status = ProviderStatus(provider: .claude, cliInstalled: true, cliPath: "/bin/claude", apiKeyPresent: true, environmentKeyPresent: false)
         XCTAssertEqual(status.statusSummary, "CLI ready")
