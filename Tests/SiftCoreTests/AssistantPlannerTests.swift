@@ -52,7 +52,7 @@ final class AssistantPlannerTests: XCTestCase {
             return XCTFail("Expected command plan")
         }
 
-        XCTAssertEqual(plan.sql, "SHOW TABLES;")
+        XCTAssertTrue(plan.sql.contains("information_schema.tables"))
     }
 
     func testRawSQLPassthrough() {
@@ -117,7 +117,7 @@ final class AssistantPlannerTests: XCTestCase {
             return XCTFail("Expected command plan")
         }
 
-        XCTAssertEqual(plan.sql, "DESCRIBE;")
+        XCTAssertTrue(plan.sql.contains("information_schema.columns"))
     }
 
     func testCSVPreviewUsesReadCSV() {
@@ -1181,7 +1181,7 @@ final class DescribeTableTests: XCTestCase {
             return XCTFail("Expected command plan, got \(action)")
         }
 
-        XCTAssertEqual(plan.sql, "DESCRIBE;")
+        XCTAssertTrue(plan.sql.contains("information_schema.columns"))
     }
 
     func testExtractDescribeTargetRejectsReservedWords() {
@@ -2079,7 +2079,7 @@ final class PlannerEdgeCaseTests: XCTestCase {
         guard case let .command(plan) = action else {
             return XCTFail("Expected command plan")
         }
-        XCTAssertEqual(plan.sql, "SHOW TABLES;")
+        XCTAssertTrue(plan.sql.contains("information_schema.tables"))
     }
 
     func testDuckDBListColumnsPattern() {
@@ -2459,7 +2459,7 @@ final class DataSourceSummarizeDescribeTests: XCTestCase {
 
     func testDescribeQueryForDuckDB() {
         let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
-        XCTAssertEqual(source.describeQuery(), "DESCRIBE;")
+        XCTAssertTrue(source.describeQuery()!.contains("information_schema.columns"))
     }
 
     func testIsTabularFile() {
@@ -3436,7 +3436,7 @@ final class DuckDBPlannerPrecedenceTests: XCTestCase {
         guard case let .command(plan) = action else {
             return XCTFail("Expected command, got \(action)")
         }
-        XCTAssertEqual(plan.sql, "SHOW TABLES;")
+        XCTAssertTrue(plan.sql.contains("information_schema.tables"))
     }
 
     func testDescribeTableBeforeGenericDescribe() {
@@ -3451,7 +3451,7 @@ final class DuckDBPlannerPrecedenceTests: XCTestCase {
         guard case let .command(plan2) = action2 else {
             return XCTFail("Expected command")
         }
-        XCTAssertEqual(plan2.sql, "DESCRIBE;")
+        XCTAssertTrue(plan2.sql.contains("information_schema.columns"))
     }
 }
 

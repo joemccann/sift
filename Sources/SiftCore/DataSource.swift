@@ -146,7 +146,8 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
     /// Build a DESCRIBE query for this source
     public func describeQuery() -> String? {
         guard let readExpr = duckDBReadExpression else {
-            return "DESCRIBE;" // DuckDB database — describe the whole db
+            // DuckDB database — show full schema across all schemas
+            return "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns ORDER BY table_schema, table_name, ordinal_position;"
         }
         return "DESCRIBE SELECT * FROM \(readExpr);"
     }

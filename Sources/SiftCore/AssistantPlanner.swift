@@ -541,8 +541,18 @@ public enum AssistantPlanner {
             return .command(
                 DuckDBCommandPlan(
                     source: source,
-                    sql: "SHOW TABLES;",
-                    explanation: "Listing tables in \(source.displayName)."
+                    sql: "SELECT table_schema, table_name FROM information_schema.tables ORDER BY table_schema, table_name;",
+                    explanation: "Listing all tables (across all schemas) in \(source.displayName)."
+                )
+            )
+        }
+
+        if lowercased.contains("how many") && (lowercased.contains("record") || lowercased.contains("row")) && !lowercased.contains(" in ") && !lowercased.contains(" from ") {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT table_schema, table_name, estimated_size AS est_rows FROM duckdb_tables() ORDER BY table_schema, table_name;",
+                    explanation: "Showing estimated row counts for all tables in \(source.displayName)."
                 )
             )
         }
@@ -551,7 +561,7 @@ public enum AssistantPlanner {
             return .command(
                 DuckDBCommandPlan(
                     source: source,
-                    sql: "SELECT table_name, column_name, data_type FROM information_schema.columns ORDER BY table_name, ordinal_position;",
+                    sql: "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns ORDER BY table_schema, table_name, ordinal_position;",
                     explanation: "Listing all columns across all tables in \(source.displayName)."
                 )
             )
@@ -561,7 +571,7 @@ public enum AssistantPlanner {
             return .command(
                 DuckDBCommandPlan(
                     source: source,
-                    sql: "SELECT table_name, estimated_size, column_count, index_count FROM duckdb_tables();",
+                    sql: "SELECT schema_name, table_name, estimated_size, column_count FROM duckdb_tables() ORDER BY schema_name, table_name;",
                     explanation: "Showing table sizes and metadata for \(source.displayName)."
                 )
             )
@@ -691,8 +701,8 @@ public enum AssistantPlanner {
             return .command(
                 DuckDBCommandPlan(
                     source: source,
-                    sql: "DESCRIBE;",
-                    explanation: "Describing the schema of \(source.displayName)."
+                    sql: "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns ORDER BY table_schema, table_name, ordinal_position;",
+                    explanation: "Describing the full schema of \(source.displayName)."
                 )
             )
         }
