@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import DuckDBAdapter
 import SiftCore
 
@@ -420,12 +421,40 @@ private struct SetupSummaryView: View {
 
 private struct TranscriptItemView: View {
     let item: TranscriptItem
+    @State private var isHovered = false
+    @State private var showCopied = false
 
     var body: some View {
         VStack(alignment: item.role == .user ? .trailing : .leading, spacing: 8) {
-            Text(item.title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Text(item.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                if isHovered || showCopied {
+                    Button {
+                        copyItemContent()
+                        showCopied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            showCopied = false
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
+                                .font(.caption2)
+                            if showCopied {
+                                Text("Copied")
+                                    .font(.caption2)
+                            }
+                        }
+                        .foregroundStyle(showCopied ? .green : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity)
+                }
+            }
 
             VStack(alignment: .leading, spacing: 10) {
                 Text(item.body)
@@ -513,6 +542,27 @@ private struct TranscriptItemView: View {
             )
         }
         .frame(maxWidth: .infinity, alignment: item.role == .user ? .trailing : .leading)
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
+    }
+
+    private func copyItemContent() {
+        let text: String
+        switch item.kind {
+        case let .commandPreview(sql, _):
+            text = sql
+        case let .rawCommandPreview(command):
+            text = command
+        case let .commandResult(_, stdout, stderr):
+            text = stdout.isEmpty ? stderr : stdout
+        default:
+            text = item.body
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     private var backgroundStyle: some ShapeStyle {
