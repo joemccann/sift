@@ -4332,3 +4332,94 @@ final class PromptContextBuilderTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB BETWEEN pattern
+
+final class DuckDBBetweenPatternTests: XCTestCase {
+    func testBetweenPatternGeneratesSQL() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let action = AssistantPlanner.plan(prompt: "price between 50 and 200 in trades", source: source)
+        guard case let .command(plan) = action else {
+            return XCTFail("Expected command, got \(action)")
+        }
+        XCTAssertTrue(plan.sql.contains("BETWEEN 50 AND 200"))
+        XCTAssertTrue(plan.sql.contains("FROM trades"))
+    }
+
+    func testExtractBetweenPattern() {
+        let result = AssistantPlanner.extractBetweenPattern(from: "age between 18 and 65 in users")
+        XCTAssertEqual(result?.table, "users")
+        XCTAssertEqual(result?.column, "age")
+        XCTAssertEqual(result?.low, "18")
+        XCTAssertEqual(result?.high, "65")
+    }
+
+    func testExtractBetweenFromTable() {
+        let result = AssistantPlanner.extractBetweenPattern(from: "date between 2024-01-01 and 2024-12-31 from events")
+        XCTAssertEqual(result?.table, "events")
+        XCTAssertEqual(result?.column, "date")
+    }
+
+    func testExtractBetweenNoMatch() {
+        XCTAssertNil(AssistantPlanner.extractBetweenPattern(from: "show me data"))
+    }
+}
+
+// MARK: - QueryHistoryManager
+
+final class QueryHistoryManagerTests: XCTestCase {
+    func testCommandHistory() {
+        let items = [
+            TranscriptItem(role: .assistant, title: "Preview", body: "preview",
+                           kind: .commandPreview(sql: "SELECT * FROM trades;", sourceName: "db")),
+            TranscriptItem(role: .user, title: "You", body: "Q"),
+            TranscriptItem(role: .assistant, title: "Preview", body: "count",
+                           kind: .commandPreview(sql: "SELECT COUNT(*) FROM trades;", sourceName: "db")),
+        ]
+        let history = QueryHistoryManager.commandHistory(from: items)
+        XCTAssertEqual(history.count, 2)
+        XCTAssertEqual(history[0].sql, "SELECT * FROM trades;")
+    }
+
+    func testFrequentCommands() {
+        let items = [
+            TranscriptItem(role: .assistant, title: "P", body: "", kind: .commandPreview(sql: "SELECT 1;", sourceName: "db")),
+            TranscriptItem(role: .assistant, title: "P", body: "", kind: .commandPreview(sql: "SELECT 2;", sourceName: "db")),
+            TranscriptItem(role: .assistant, title: "P", body: "", kind: .commandPreview(sql: "SELECT 1;", sourceName: "db")),
+            TranscriptItem(role: .assistant, title: "P", body: "", kind: .commandPreview(sql: "SELECT 1;", sourceName: "db")),
+        ]
+        let frequent = QueryHistoryManager.frequentCommands(from: items)
+        XCTAssertEqual(frequent.first?.sql, "SELECT 1;")
+        XCTAssertEqual(frequent.first?.count, 3)
+    }
+
+    func testRecentUniqueCommands() {
+        let items = [
+            TranscriptItem(role: .assistant, title: "P", body: "", kind: .commandPreview(sql: "A;", sourceName: "db")),
+            TranscriptItem(role: .assistant, title: "P", body: "", kind: .commandPreview(sql: "B;", sourceName: "db")),
+            TranscriptItem(role: .assistant, title: "P", body: "", kind: .commandPreview(sql: "A;", sourceName: "db")),
+            TranscriptItem(role: .assistant, title: "P", body: "", kind: .commandPreview(sql: "C;", sourceName: "db")),
+        ]
+        let recent = QueryHistoryManager.recentUniqueCommands(from: items, limit: 3)
+        XCTAssertEqual(recent.count, 3)
+        XCTAssertEqual(recent[0], "C;") // Most recent first
+        XCTAssertEqual(recent[1], "A;")
+        XCTAssertEqual(recent[2], "B;")
+    }
+
+    func testFrequentCommandsLimit() {
+        let items = (0..<20).map { i in
+            TranscriptItem(role: .assistant, title: "P", body: "", kind: .commandPreview(sql: "SELECT \(i);", sourceName: "db"))
+        }
+        let frequent = QueryHistoryManager.frequentCommands(from: items, limit: 5)
+        XCTAssertEqual(frequent.count, 5)
+    }
+
+    func testCommandHistoryEmpty() {
+        XCTAssertTrue(QueryHistoryManager.commandHistory(from: []).isEmpty)
+    }
+
+    func testRecentUniqueCommandsEmpty() {
+        XCTAssertTrue(QueryHistoryManager.recentUniqueCommands(from: []).isEmpty)
+    }
+}
+

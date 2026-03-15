@@ -113,6 +113,44 @@ public struct TranscriptItem: Identifiable, Equatable, Sendable, Codable {
     }
 }
 
+public enum QueryHistoryManager {
+    /// Get all SQL commands from transcript with their timestamps
+    public static func commandHistory(from items: [TranscriptItem]) -> [(sql: String, timestamp: Date)] {
+        items.compactMap { item in
+            if case let .commandPreview(sql, _) = item.kind {
+                return (sql: sql, timestamp: item.timestamp)
+            }
+            return nil
+        }
+    }
+
+    /// Get the most frequently used SQL commands
+    public static func frequentCommands(from items: [TranscriptItem], limit: Int = 5) -> [(sql: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for item in items {
+            if case let .commandPreview(sql, _) = item.kind {
+                counts[sql, default: 0] += 1
+            }
+        }
+        return counts.sorted { $0.value > $1.value }
+            .prefix(limit)
+            .map { (sql: $0.key, count: $0.value) }
+    }
+
+    /// Get the last N unique SQL commands
+    public static func recentUniqueCommands(from items: [TranscriptItem], limit: Int = 10) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for item in items.reversed() {
+            if case let .commandPreview(sql, _) = item.kind, seen.insert(sql).inserted {
+                result.append(sql)
+                if result.count >= limit { break }
+            }
+        }
+        return result
+    }
+}
+
 public enum TranscriptArchiver {
     /// Archive items older than a given date, returning (kept, archived) tuple
     public static func archive(items: [TranscriptItem], olderThan cutoff: Date) -> (kept: [TranscriptItem], archived: [TranscriptItem]) {

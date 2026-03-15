@@ -737,6 +737,16 @@ public enum AssistantPlanner {
             )
         }
 
+        if let between = extractBetweenPattern(from: lowercased) {
+            return .command(
+                DuckDBCommandPlan(
+                    source: source,
+                    sql: "SELECT * FROM \(between.table) WHERE \(between.column) BETWEEN \(between.low) AND \(between.high) LIMIT 25;",
+                    explanation: "\(between.column) between \(between.low) and \(between.high) in \(between.table) from \(source.displayName)."
+                )
+            )
+        }
+
         if !looksLikeSQL(prompt), let filter = extractWhereFilter(from: lowercased) {
             return .command(
                 DuckDBCommandPlan(
@@ -943,6 +953,26 @@ public enum AssistantPlanner {
             }
         }
         return nil
+    }
+
+    /// Extracts "[column] between [a] and [b] in [table]"
+    static func extractBetweenPattern(from lowercased: String) -> (table: String, column: String, low: String, high: String)? {
+        let pattern = "(\\w+) between (\\S+) and (\\S+) (?:in|from) (\\w+)"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []),
+              let match = regex.firstMatch(in: lowercased, range: NSRange(lowercased.startIndex..., in: lowercased)),
+              match.numberOfRanges >= 5,
+              let colRange = Range(match.range(at: 1), in: lowercased),
+              let lowRange = Range(match.range(at: 2), in: lowercased),
+              let highRange = Range(match.range(at: 3), in: lowercased),
+              let tableRange = Range(match.range(at: 4), in: lowercased) else {
+            return nil
+        }
+        return (
+            table: String(lowercased[tableRange]),
+            column: String(lowercased[colRange]),
+            low: String(lowercased[lowRange]),
+            high: String(lowercased[highRange])
+        )
     }
 
     /// Extracts "filter [table] where [condition]" or "where [condition] in [table]" pattern
