@@ -217,6 +217,38 @@ public struct SourceComparison: Equatable, Sendable {
     }
 }
 
+// MARK: - SQL Formatter
+
+public enum SQLFormatter {
+    /// Add basic formatting to a SQL query (uppercase keywords)
+    public static func uppercaseKeywords(in sql: String) -> String {
+        let keywords = ["select", "from", "where", "join", "on", "and", "or", "not",
+                       "group by", "order by", "having", "limit", "offset", "union",
+                       "insert", "update", "delete", "create", "drop", "alter",
+                       "as", "in", "between", "like", "is", "null", "distinct",
+                       "count", "sum", "avg", "min", "max", "desc", "asc",
+                       "inner", "left", "right", "outer", "cross", "using",
+                       "with", "case", "when", "then", "else", "end",
+                       "exists", "all", "any", "into", "values", "set",
+                       "describe", "summarize", "explain", "pragma", "show"]
+        var result = sql
+        for keyword in keywords.sorted(by: { $0.count > $1.count }) {
+            let pattern = "\\b\(NSRegularExpression.escapedPattern(for: keyword))\\b"
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                result = regex.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result), withTemplate: keyword.uppercased())
+            }
+        }
+        return result
+    }
+
+    /// Estimate the number of clauses in a SQL query
+    public static func clauseCount(in sql: String) -> Int {
+        let upper = sql.uppercased()
+        let clauses = ["SELECT", "FROM", "WHERE", "GROUP BY", "HAVING", "ORDER BY", "LIMIT", "JOIN"]
+        return clauses.filter { upper.contains($0) }.count
+    }
+}
+
 // MARK: - SQL Sanitizer
 
 public enum SQLSanitizer {

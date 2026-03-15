@@ -113,6 +113,36 @@ public struct TranscriptItem: Identifiable, Equatable, Sendable, Codable {
     }
 }
 
+public enum TranscriptArchiver {
+    /// Archive items older than a given date, returning (kept, archived) tuple
+    public static func archive(items: [TranscriptItem], olderThan cutoff: Date) -> (kept: [TranscriptItem], archived: [TranscriptItem]) {
+        var kept: [TranscriptItem] = []
+        var archived: [TranscriptItem] = []
+        for item in items {
+            if item.timestamp < cutoff {
+                archived.append(item)
+            } else {
+                kept.append(item)
+            }
+        }
+        return (kept, archived)
+    }
+
+    /// Always keep pinned items regardless of age
+    public static func archiveKeepingPinned(items: [TranscriptItem], olderThan cutoff: Date) -> (kept: [TranscriptItem], archived: [TranscriptItem]) {
+        var kept: [TranscriptItem] = []
+        var archived: [TranscriptItem] = []
+        for item in items {
+            if item.isPinned || item.timestamp >= cutoff {
+                kept.append(item)
+            } else {
+                archived.append(item)
+            }
+        }
+        return (kept, archived)
+    }
+}
+
 public enum TranscriptExporter {
     /// Export command results as CSV text
     public static func resultsAsCSV(from items: [TranscriptItem]) -> String {

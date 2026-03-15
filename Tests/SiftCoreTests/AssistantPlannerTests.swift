@@ -3970,6 +3970,87 @@ final class DuckDBOutputParserComprehensiveTests: XCTestCase {
     }
 }
 
+// MARK: - SQL Formatter
+
+final class SQLFormatterTests: XCTestCase {
+    func testUppercaseKeywords() {
+        let formatted = SQLFormatter.uppercaseKeywords(in: "select * from trades where price > 100;")
+        XCTAssertTrue(formatted.contains("SELECT"))
+        XCTAssertTrue(formatted.contains("FROM"))
+        XCTAssertTrue(formatted.contains("WHERE"))
+    }
+
+    func testUppercasePreservesNonKeywords() {
+        let formatted = SQLFormatter.uppercaseKeywords(in: "select name from users;")
+        XCTAssertTrue(formatted.contains("name"))
+        XCTAssertTrue(formatted.contains("users"))
+    }
+
+    func testClauseCountSimple() {
+        XCTAssertEqual(SQLFormatter.clauseCount(in: "SELECT * FROM trades;"), 2) // SELECT, FROM
+    }
+
+    func testClauseCountComplex() {
+        let sql = "SELECT symbol, COUNT(*) FROM trades WHERE price > 0 GROUP BY symbol HAVING COUNT(*) > 1 ORDER BY symbol LIMIT 10;"
+        XCTAssertEqual(SQLFormatter.clauseCount(in: sql), 7) // SELECT, FROM, WHERE, GROUP BY, HAVING, ORDER BY, LIMIT
+    }
+
+    func testClauseCountEmpty() {
+        XCTAssertEqual(SQLFormatter.clauseCount(in: "SHOW TABLES;"), 0)
+    }
+
+    func testClauseCountWithJoin() {
+        let sql = "SELECT * FROM a JOIN b ON a.id = b.id WHERE a.x > 0;"
+        XCTAssertEqual(SQLFormatter.clauseCount(in: sql), 4) // SELECT, FROM, JOIN, WHERE
+    }
+}
+
+// MARK: - Transcript Archiver
+
+final class TranscriptArchiverTests: XCTestCase {
+    func testArchiveOldItems() {
+        let now = Date()
+        let items = [
+            TranscriptItem(role: .user, title: "A", body: "old", timestamp: now.addingTimeInterval(-7200)),
+            TranscriptItem(role: .user, title: "B", body: "recent", timestamp: now.addingTimeInterval(-60)),
+            TranscriptItem(role: .user, title: "C", body: "new", timestamp: now),
+        ]
+        let cutoff = now.addingTimeInterval(-3600) // 1 hour ago
+        let (kept, archived) = TranscriptArchiver.archive(items: items, olderThan: cutoff)
+        XCTAssertEqual(kept.count, 2)
+        XCTAssertEqual(archived.count, 1)
+        XCTAssertEqual(archived.first?.body, "old")
+    }
+
+    func testArchiveKeepingPinnedItems() {
+        let now = Date()
+        let items = [
+            TranscriptItem(role: .user, title: "A", body: "old pinned", timestamp: now.addingTimeInterval(-7200), isPinned: true),
+            TranscriptItem(role: .user, title: "B", body: "old not pinned", timestamp: now.addingTimeInterval(-7200)),
+            TranscriptItem(role: .user, title: "C", body: "new", timestamp: now),
+        ]
+        let cutoff = now.addingTimeInterval(-3600)
+        let (kept, archived) = TranscriptArchiver.archiveKeepingPinned(items: items, olderThan: cutoff)
+        XCTAssertEqual(kept.count, 2) // pinned old + new
+        XCTAssertEqual(archived.count, 1)
+        XCTAssertEqual(archived.first?.body, "old not pinned")
+    }
+
+    func testArchiveEmptyItems() {
+        let (kept, archived) = TranscriptArchiver.archive(items: [], olderThan: Date())
+        XCTAssertTrue(kept.isEmpty)
+        XCTAssertTrue(archived.isEmpty)
+    }
+
+    func testArchiveNothingOld() {
+        let items = [TranscriptItem(role: .user, title: "A", body: "new", timestamp: Date())]
+        let cutoff = Date().addingTimeInterval(-3600)
+        let (kept, archived) = TranscriptArchiver.archive(items: items, olderThan: cutoff)
+        XCTAssertEqual(kept.count, 1)
+        XCTAssertTrue(archived.isEmpty)
+    }
+}
+
 // MARK: - SQL Sanitizer
 
 final class SQLSanitizerTests: XCTestCase {

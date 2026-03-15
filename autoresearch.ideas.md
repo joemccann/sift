@@ -2,16 +2,15 @@
 
 ## Promising Next Features
 - Provider response caching — in-memory LRU cache
-- Query parameterization — replace literals with $1, $2 params
-- Smart error context — include recent transcript in error messages
+- Batch command execution — run multiple queries in sequence
+- SQL formatting — pretty-print SQL queries
 - DuckDB "rename [table]" — ALTER TABLE pattern
 - Source import history — track when sources were last queried
-- Transcript search with tag filter — combine text search + tag
-- Query complexity estimation — estimate query cost
-- DuckDB type detection — map column types to display formats
-- Batch command execution — run multiple queries in sequence
+- Query cost heuristic — estimate output size before running
+- Transcript archival — archive old transcript items
 
-## Completed (72 experiments, 750 tests)
-Everything prior plus: TranscriptExporter (CSV/plain text), TranscriptDeduplicator,
-CommandAlias model, aggregate/order-by completeness, planner precedence fixes,
-source lifecycle tests, Metal visualization edge cases, provider diagnostics coverage.
+## Completed (75 experiments, 822 tests)
+All prior features plus: SQLSanitizer (dangerous ops, read-only, table extraction),
+PromptContextBuilder (source context, labels), QueryComplexityEstimator,
+DuckDBColumnType, TranscriptExporter/Deduplicator, CommandAlias, comprehensive
+edge case coverage across all modules.
