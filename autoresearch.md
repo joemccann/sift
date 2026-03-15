@@ -72,4 +72,15 @@ All files the agent may modify:
 10. **Conversation search** — find text in transcript
 
 ## What's Been Tried
-(Updated as experiments accumulate)
+
+83 experiments, 916 tests, all keeps (zero failures/reverts). See `autoresearch.ideas.md` for the full list of completed features. Key milestones:
+
+- Run 1-3: Source removal, CSV support, natural language → SQL flow
+- Run 4-10: Slash commands (/clear, /sources, /copy, /rerun, /history, /export, /status, /version), JSON support, conversation search, bug fixes
+- Run 11-20: Comprehensive test coverage across all modules, parquet metadata, random sampling, DuckDB describe/preview/count/sample/summarize [table]
+- Run 21-30: Tab completion (CommandRegistry), query cancellation state, bookmarks, pinning, tagging, /reset, top-N-by-column, source grouping
+- Run 31-40: DuckDB join/where-filter/distinct/group-by patterns, source favorites/comparison, error recovery suggestions, TranscriptFilter
+- Run 41-50: DuckDB aggregate/order-by patterns, QueryTemplate, TranscriptTiming, source notes/aliases/validation, session export
+- Run 51-60: QueryExecutionStats, DuckDBColumnType detection, contextual suggestions, remote URL import, DuckDBOutputParser
+- Run 61-70: TranscriptExporter/Deduplicator, CommandAlias, comprehensive planner coverage, DuckDB BETWEEN pattern, QueryHistoryManager
+- Run 71-83: SQLFormatter, SQLSanitizer, PromptContextBuilder, TranscriptArchiver, DuckDBQueryBuilder, SourceStatistics, QueryComplexityEstimator
