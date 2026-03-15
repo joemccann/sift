@@ -3970,3 +3970,124 @@ final class DuckDBOutputParserComprehensiveTests: XCTestCase {
     }
 }
 
+// MARK: - SQL Sanitizer
+
+final class SQLSanitizerTests: XCTestCase {
+    func testSelectIsReadOnly() {
+        XCTAssertTrue(SQLSanitizer.isReadOnly("SELECT * FROM trades;"))
+    }
+
+    func testDropIsDangerous() {
+        XCTAssertTrue(SQLSanitizer.containsDangerousOperations("DROP TABLE trades;"))
+        XCTAssertFalse(SQLSanitizer.isReadOnly("DROP TABLE trades;"))
+    }
+
+    func testDeleteIsDangerous() {
+        XCTAssertTrue(SQLSanitizer.containsDangerousOperations("DELETE FROM trades WHERE id = 1;"))
+    }
+
+    func testUpdateIsDangerous() {
+        XCTAssertTrue(SQLSanitizer.containsDangerousOperations("UPDATE trades SET price = 100;"))
+    }
+
+    func testInsertIsDangerous() {
+        XCTAssertTrue(SQLSanitizer.containsDangerousOperations("INSERT INTO trades VALUES (1, 2);"))
+    }
+
+    func testAlterIsDangerous() {
+        XCTAssertTrue(SQLSanitizer.containsDangerousOperations("ALTER TABLE trades ADD COLUMN volume INT;"))
+    }
+
+    func testTruncateIsDangerous() {
+        XCTAssertTrue(SQLSanitizer.containsDangerousOperations("TRUNCATE trades;"))
+    }
+
+    func testDescribeIsReadOnly() {
+        XCTAssertTrue(SQLSanitizer.isReadOnly("DESCRIBE trades;"))
+    }
+
+    func testShowTablesIsReadOnly() {
+        XCTAssertTrue(SQLSanitizer.isReadOnly("SHOW TABLES;"))
+    }
+
+    func testSummarizeIsReadOnly() {
+        XCTAssertTrue(SQLSanitizer.isReadOnly("SUMMARIZE trades;"))
+    }
+
+    func testExtractTableNames() {
+        let tables = SQLSanitizer.extractTableNames(from: "SELECT * FROM trades JOIN prices ON trades.id = prices.trade_id;")
+        XCTAssertTrue(tables.contains("trades"))
+        XCTAssertTrue(tables.contains("prices"))
+    }
+
+    func testExtractTableNamesFromSubquery() {
+        let tables = SQLSanitizer.extractTableNames(from: "SELECT * FROM orders WHERE customer_id IN (SELECT id FROM customers);")
+        XCTAssertTrue(tables.contains("orders"))
+        XCTAssertTrue(tables.contains("customers"))
+    }
+
+    func testExtractTableNamesEmpty() {
+        XCTAssertTrue(SQLSanitizer.extractTableNames(from: "SELECT 1;").isEmpty)
+    }
+
+    func testExtractTableNamesIgnoresReserved() {
+        let tables = SQLSanitizer.extractTableNames(from: "SELECT * FROM trades WHERE price > 0;")
+        XCTAssertFalse(tables.contains("where"))
+        XCTAssertTrue(tables.contains("trades"))
+    }
+}
+
+// MARK: - Prompt Context Builder
+
+final class PromptContextBuilderTests: XCTestCase {
+    func testSourceContextWithParquet() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let ctx = PromptContextBuilder.sourceContext(for: source)
+        XCTAssertTrue(ctx.contains("data.parquet"))
+        XCTAssertTrue(ctx.contains("Parquet"))
+        XCTAssertTrue(ctx.contains("read_parquet"))
+    }
+
+    func testSourceContextWithAlias() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv, alias: "Trades")
+        let ctx = PromptContextBuilder.sourceContext(for: source)
+        XCTAssertTrue(ctx.contains("Alias: Trades"))
+    }
+
+    func testSourceContextWithRemote() {
+        let source = DataSource.fromRemoteURL("https://example.com/data.parquet")!
+        let ctx = PromptContextBuilder.sourceContext(for: source)
+        XCTAssertTrue(ctx.contains("Remote"))
+    }
+
+    func testSourceContextNilSource() {
+        let ctx = PromptContextBuilder.sourceContext(for: nil)
+        XCTAssertTrue(ctx.contains("No data source"))
+    }
+
+    func testSourceContextForDuckDB() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let ctx = PromptContextBuilder.sourceContext(for: source)
+        XCTAssertTrue(ctx.contains("DuckDB"))
+        XCTAssertFalse(ctx.contains("read_"))
+    }
+
+    func testShortLabel() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet)
+        let label = PromptContextBuilder.shortLabel(for: source)
+        XCTAssertEqual(label, "data.parquet (Parquet)")
+    }
+
+    func testShortLabelWithAlias() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv, alias: "My Data")
+        let label = PromptContextBuilder.shortLabel(for: source)
+        XCTAssertEqual(label, "My Data (CSV)")
+    }
+
+    func testShortLabelForJSON() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let label = PromptContextBuilder.shortLabel(for: source)
+        XCTAssertEqual(label, "data.json (JSON)")
+    }
+}
+

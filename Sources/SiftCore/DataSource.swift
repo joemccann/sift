@@ -217,6 +217,86 @@ public struct SourceComparison: Equatable, Sendable {
     }
 }
 
+// MARK: - SQL Sanitizer
+
+public enum SQLSanitizer {
+    /// Check if a SQL string contains potentially dangerous operations
+    public static func containsDangerousOperations(_ sql: String) -> Bool {
+        let upper = sql.uppercased()
+        let dangerous = ["DROP ", "DELETE ", "TRUNCATE ", "ALTER ", "UPDATE ", "INSERT "]
+        return dangerous.contains { upper.contains($0) }
+    }
+
+    /// Check if SQL is read-only (safe for readonly mode)
+    public static func isReadOnly(_ sql: String) -> Bool {
+        !containsDangerousOperations(sql)
+    }
+
+    /// Extract table names referenced in a SQL query (simple heuristic)
+    public static func extractTableNames(from sql: String) -> [String] {
+        let patterns = [
+            "FROM\\s+(\\w+)",
+            "JOIN\\s+(\\w+)",
+            "INTO\\s+(\\w+)",
+            "UPDATE\\s+(\\w+)",
+            "TABLE\\s+(\\w+)",
+        ]
+        var tables = Set<String>()
+        let reserved: Set<String> = ["select", "where", "and", "or", "not", "null", "true", "false", "as", "on", "in"]
+
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                let matches = regex.matches(in: sql, range: NSRange(sql.startIndex..., in: sql))
+                for match in matches {
+                    if let range = Range(match.range(at: 1), in: sql) {
+                        let name = String(sql[range]).lowercased()
+                        if !reserved.contains(name) {
+                            tables.insert(name)
+                        }
+                    }
+                }
+            }
+        }
+        return Array(tables).sorted()
+    }
+}
+
+// MARK: - Prompt Context Builder
+
+public enum PromptContextBuilder {
+    /// Build a context string describing the current source
+    public static func sourceContext(for source: DataSource?) -> String {
+        guard let source else { return "No data source is currently selected." }
+
+        var lines = [
+            "Source: \(source.displayName)",
+            "Type: \(source.kind.displayLabel)",
+            "Path: \(source.path)",
+        ]
+
+        if let readExpr = source.duckDBReadExpression {
+            lines.append("DuckDB read: \(readExpr)")
+        }
+
+        if source.isRemote {
+            lines.append("(Remote source)")
+        }
+
+        if let alias = source.alias {
+            lines.append("Alias: \(alias)")
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    /// Build a short label for display in the UI
+    public static func shortLabel(for source: DataSource) -> String {
+        let name = source.displayName
+        let kind = source.kind.displayLabel
+        return "\(name) (\(kind))"
+    }
+}
+
 // MARK: - DuckDB Query Complexity
 
 public enum QueryComplexityLevel: String, Sendable {
