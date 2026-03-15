@@ -3872,5 +3872,101 @@ final class DuckDBTypeDetectionTests: XCTestCase {
         XCTAssertEqual(DuckDBColumnType.detect(from: "MAP"), .other)
         XCTAssertEqual(DuckDBColumnType.detect(from: "LIST"), .other)
     }
+
+    func testCaseInsensitiveDetection() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "integer"), .integer)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "Varchar"), .text)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "boolean"), .boolean)
+    }
+
+    func testNumericType() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "NUMERIC"), .decimal)
+    }
+
+    func testStringType() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "STRING"), .text)
+    }
+
+    func testCharType() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "CHAR(10)"), .text)
+    }
+}
+
+// MARK: - QueryComplexity edge cases
+
+final class QueryComplexityEdgeCaseTests: XCTestCase {
+    func testHavingAddsComplexity() {
+        let sql = "SELECT symbol, COUNT(*) FROM trades GROUP BY symbol HAVING COUNT(*) > 10;"
+        let level = QueryComplexityEstimator.estimate(sql)
+        XCTAssertEqual(level, .moderate)
+    }
+
+    func testMultipleJoinsAreComplex() {
+        let sql = "SELECT * FROM a JOIN b ON a.id = b.a_id JOIN c ON b.id = c.b_id GROUP BY a.name HAVING COUNT(*) > 1;"
+        let level = QueryComplexityEstimator.estimate(sql)
+        XCTAssertEqual(level, .complex)
+    }
+
+    func testEmptyQueryIsSimple() {
+        XCTAssertEqual(QueryComplexityEstimator.estimate(""), .simple)
+    }
+
+    func testDescribeIsSimple() {
+        XCTAssertEqual(QueryComplexityEstimator.estimate("DESCRIBE trades;"), .simple)
+    }
+
+    func testExceptAddsComplexity() {
+        let sql = "SELECT * FROM a EXCEPT SELECT * FROM b;"
+        XCTAssertEqual(QueryComplexityEstimator.estimate(sql), .moderate)
+    }
+}
+
+// MARK: - SourceComparison full properties
+
+final class SourceComparisonFullTests: XCTestCase {
+    func testComparisonSameFile() {
+        let s = DataSource(url: URL(fileURLWithPath: "/tmp/a.parquet"), kind: .parquet)
+        let cmp = SourceComparison(source1: s, source2: s)
+        XCTAssertTrue(cmp.sameKind)
+        XCTAssertTrue(cmp.sameDirectory)
+        XCTAssertTrue(cmp.sameExtension)
+    }
+
+    func testComparisonJsonVsJsonl() {
+        let s1 = DataSource(url: URL(fileURLWithPath: "/tmp/a.json"), kind: .json)
+        let s2 = DataSource(url: URL(fileURLWithPath: "/tmp/b.jsonl"), kind: .json)
+        let cmp = SourceComparison(source1: s1, source2: s2)
+        XCTAssertTrue(cmp.sameKind)
+        XCTAssertFalse(cmp.sameExtension)
+    }
+
+    func testComparisonDuckDBvsParquet() {
+        let s1 = DataSource(url: URL(fileURLWithPath: "/tmp/a.duckdb"), kind: .duckdb)
+        let s2 = DataSource(url: URL(fileURLWithPath: "/tmp/b.parquet"), kind: .parquet)
+        let cmp = SourceComparison(source1: s1, source2: s2)
+        XCTAssertFalse(cmp.sameKind)
+    }
+}
+
+// MARK: - DuckDB output parser comprehensive
+
+final class DuckDBOutputParserComprehensiveTests: XCTestCase {
+    func testExtractRowCountZero() {
+        XCTAssertEqual(DuckDBOutputParser.extractRowCount(from: "0 rows"), 0)
+    }
+
+    func testCountDataRowsWithSeparator() {
+        let output = "name | age\n─────┼────\nAlice | 30\n"
+        let count = DuckDBOutputParser.countDataRows(in: output)
+        XCTAssertGreaterThan(count, 0)
+    }
+
+    func testContainsErrorBinderError() {
+        XCTAssertTrue(DuckDBOutputParser.containsError(in: "Binder Error: column not found"))
+    }
+
+    func testContainsErrorCatalogError() {
+        XCTAssertTrue(DuckDBOutputParser.containsError(in: "Catalog Error: table missing"))
+    }
 }
 

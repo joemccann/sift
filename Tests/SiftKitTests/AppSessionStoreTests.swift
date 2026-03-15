@@ -239,6 +239,67 @@ final class AppSessionStoreTests: XCTestCase {
         try? FileManager.default.removeItem(at: rootURL)
     }
 
+    func testSaveAndLoadWithCommandAliases() throws {
+        let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let fileURL = rootURL.appendingPathComponent("session.json")
+        let store = AppSessionStore(fileURL: fileURL)
+
+        var settings = AppSettings(hasCompletedSetup: true)
+        settings.commandAliases = [
+            CommandAlias(name: "t", sql: "SHOW TABLES;"),
+            CommandAlias(name: "d", sql: "DESCRIBE;"),
+        ]
+
+        let snapshot = AppSessionSnapshot(settings: settings, sources: [], selectedSourceID: nil, transcript: [])
+        try store.saveSnapshot(snapshot)
+        let restored = store.loadSnapshot()
+
+        XCTAssertEqual(restored?.settings.commandAliases.count, 2)
+        XCTAssertEqual(restored?.settings.commandAliases.first?.name, "t")
+        XCTAssertEqual(restored?.settings.commandAliases.last?.sql, "DESCRIBE;")
+
+        try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    func testSaveAndLoadWithSourceNotes() throws {
+        let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let fileURL = rootURL.appendingPathComponent("session.json")
+        let store = AppSessionStore(fileURL: fileURL)
+
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet, alias: "Prices", isFavorite: true, notes: "Daily OHLCV")
+        let snapshot = AppSessionSnapshot(settings: AppSettings(hasCompletedSetup: true), sources: [source], selectedSourceID: source.id, transcript: [])
+        try store.saveSnapshot(snapshot)
+        let restored = store.loadSnapshot()
+
+        XCTAssertEqual(restored?.sources.first?.notes, "Daily OHLCV")
+        XCTAssertEqual(restored?.sources.first?.alias, "Prices")
+        XCTAssertTrue(restored?.sources.first?.isFavorite == true)
+
+        try? FileManager.default.removeItem(at: rootURL)
+    }
+
+    func testSaveAndLoadMultipleSourceTypes() throws {
+        let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let fileURL = rootURL.appendingPathComponent("session.json")
+        let store = AppSessionStore(fileURL: fileURL)
+
+        let sources = [
+            DataSource(url: URL(fileURLWithPath: "/tmp/a.parquet"), kind: .parquet),
+            DataSource(url: URL(fileURLWithPath: "/tmp/b.csv"), kind: .csv),
+            DataSource(url: URL(fileURLWithPath: "/tmp/c.json"), kind: .json),
+            DataSource(url: URL(fileURLWithPath: "/tmp/d.duckdb"), kind: .duckdb),
+        ]
+
+        let snapshot = AppSessionSnapshot(settings: AppSettings(hasCompletedSetup: true), sources: sources, selectedSourceID: sources[2].id, transcript: [])
+        try store.saveSnapshot(snapshot)
+        let restored = store.loadSnapshot()
+
+        XCTAssertEqual(restored?.sources.count, 4)
+        XCTAssertEqual(restored?.selectedSourceID, sources[2].id)
+
+        try? FileManager.default.removeItem(at: rootURL)
+    }
+
     func testSaveAndLoadWithAppearanceAndTemplates() throws {
         let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let fileURL = rootURL.appendingPathComponent("session.json")

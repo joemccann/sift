@@ -2131,6 +2131,119 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.settings.commandAliases.isEmpty)
     }
 
+    // MARK: - Combined search + complexity workflow
+
+    func testSearchAndComplexityWorkflow() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT * FROM a JOIN b ON a.id = b.id;",
+            stdout: "data", stderr: "", exitCode: 0,
+            startedAt: Date(), endedAt: Date()
+        )
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"))
+        await viewModel.triggerPrompt("/sql SELECT * FROM a JOIN b ON a.id = b.id;")
+
+        // The executed SQL should be moderate complexity
+        let history = viewModel.uniqueCommandHistory
+        XCTAssertFalse(history.isEmpty)
+        if let sql = history.first {
+            XCTAssertEqual(viewModel.estimateQueryComplexity(sql), .moderate)
+        }
+    }
+
+    // MARK: - Full settings round-trip
+
+    func testAllSettingsPreservedInSnapshot() {
+        var settings = AppSettings(hasCompletedSetup: true, defaultProvider: .gemini, preferredAppearance: .dark)
+        settings.bookmarks = [BookmarkedCommand(sql: "SELECT 1;", sourceName: "test")]
+        settings.queryTemplates = [QueryTemplate(name: "Q", sql: "SELECT 2;")]
+        settings.commandAliases = [CommandAlias(name: "t", sql: "SHOW TABLES;")]
+        settings.setPreference(ProviderPreference(authMode: .apiKey, customModel: "flash"), for: .gemini)
+
+        let sessionStore = MemorySessionStore(snapshot: .init(settings: settings, sources: [], selectedSourceID: nil, transcript: []))
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: sessionStore,
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertEqual(viewModel.selectedProvider, .gemini)
+        XCTAssertEqual(viewModel.settings.preferredAppearance, .dark)
+        XCTAssertEqual(viewModel.settings.bookmarks.count, 1)
+        XCTAssertEqual(viewModel.settings.queryTemplates.count, 1)
+        XCTAssertEqual(viewModel.settings.commandAliases.count, 1)
+        XCTAssertEqual(viewModel.preference(for: .gemini).authMode, .apiKey)
+        XCTAssertEqual(viewModel.preference(for: .gemini).customModel, "flash")
+    }
+
+    // MARK: - Transcript search edge cases
+
+    func testSearchWithEmptyQueryAndNoTag() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .user, title: "You", body: "Hello"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let results = viewModel.searchTranscript(query: "", withTag: nil)
+        XCTAssertEqual(results.count, 1) // Returns all
+    }
+
+    func testSearchWithNonexistentTag() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .user, title: "You", body: "Hello"),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let results = viewModel.searchTranscript(query: "Hello", withTag: "nonexistent")
+        XCTAssertTrue(results.isEmpty)
+    }
+
+    // MARK: - Multiple source operations
+
+    func testImportAndFavoriteManySourcesWorkflow() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // Import various types
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.csv"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/c.json"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/d.duckdb"))
+        XCTAssertEqual(viewModel.sourceKindCount, 4)
+
+        // Favorite two
+        viewModel.toggleFavorite(for: viewModel.sources[0].id)
+        viewModel.toggleFavorite(for: viewModel.sources[2].id)
+        XCTAssertEqual(viewModel.favoriteCount, 2)
+
+        // Verify grouping
+        XCTAssertEqual(viewModel.tabularSources.count, 3)
+        XCTAssertEqual(viewModel.databaseSources.count, 1)
+    }
+
     // MARK: - Search with tag filter
 
     func testSearchTranscriptWithTagFilter() {

@@ -282,4 +282,59 @@ final class DuckDBAdapterTests: XCTestCase {
         // Empty DUCKDB_BINARY should be skipped
         XCTAssertFalse(candidates.first == "")
     }
+
+    // MARK: - Request SQL content
+
+    func testRequestForDuckDBContainsSQL() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        let plan = DuckDBCommandPlan(source: source, sql: "SHOW TABLES;", explanation: "Test")
+        let request = DuckDBCLIExecutor.request(for: plan, binaryPath: "/usr/bin/duckdb")
+        XCTAssertTrue(request.arguments.contains("SHOW TABLES;"))
+    }
+
+    func testRequestForJSONContainsSQL() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let sql = "SELECT * FROM read_json('/tmp/data.json') LIMIT 5;"
+        let plan = DuckDBCommandPlan(source: source, sql: sql, explanation: "Test")
+        let request = DuckDBCLIExecutor.request(for: plan, binaryPath: "/usr/bin/duckdb")
+        XCTAssertEqual(request.sql, sql)
+    }
+
+    // MARK: - Parser compound cases
+
+    func testParserComplexCommandLine() throws {
+        let args = try DuckDBRawArgumentParser.parse(#"/tmp/db.duckdb -readonly -table -c "SELECT * FROM trades WHERE price > 100;""#)
+        XCTAssertEqual(args.count, 5)
+        XCTAssertEqual(args[0], "/tmp/db.duckdb")
+        XCTAssertEqual(args[3], "-c")
+        XCTAssertTrue(args[4].contains("SELECT"))
+    }
+
+    func testParserSingleArgument() throws {
+        let args = try DuckDBRawArgumentParser.parse("--help")
+        XCTAssertEqual(args, ["--help"])
+    }
+
+    // MARK: - CLI error equality
+
+    func testCLIErrorLaunchFailedEquality() {
+        XCTAssertEqual(DuckDBCLIError.launchFailed("x"), DuckDBCLIError.launchFailed("x"))
+        XCTAssertNotEqual(DuckDBCLIError.launchFailed("x"), DuckDBCLIError.launchFailed("y"))
+    }
+
+    func testCLIErrorInvalidArgumentsEquality() {
+        XCTAssertEqual(DuckDBCLIError.invalidArguments("a"), DuckDBCLIError.invalidArguments("a"))
+        XCTAssertNotEqual(DuckDBCLIError.invalidArguments("a"), DuckDBCLIError.invalidArguments("b"))
+    }
+
+    // MARK: - Execution result
+
+    func testExecutionResultExitCodes() {
+        let date = Date()
+        let success = DuckDBExecutionResult(binaryPath: "/usr/bin/duckdb", arguments: [], sql: "", stdout: "", stderr: "", exitCode: 0, startedAt: date, endedAt: date)
+        let failure = DuckDBExecutionResult(binaryPath: "/usr/bin/duckdb", arguments: [], sql: "", stdout: "", stderr: "err", exitCode: 1, startedAt: date, endedAt: date)
+        XCTAssertEqual(success.exitCode, 0)
+        XCTAssertEqual(failure.exitCode, 1)
+        XCTAssertNotEqual(success, failure)
+    }
 }
