@@ -2131,6 +2131,86 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.settings.commandAliases.isEmpty)
     }
 
+    // MARK: - SQL formatting and archival
+
+    func testFormatSQL() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        let formatted = viewModel.formatSQL("select * from trades where price > 100;")
+        XCTAssertTrue(formatted.contains("SELECT"))
+        XCTAssertTrue(formatted.contains("FROM"))
+    }
+
+    func testArchiveTranscript() {
+        let now = Date()
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .user, title: "A", body: "old", timestamp: now.addingTimeInterval(-7200)),
+                TranscriptItem(role: .user, title: "B", body: "new", timestamp: now),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let archived = viewModel.archiveTranscript(olderThan: now.addingTimeInterval(-3600))
+        XCTAssertEqual(archived, 1)
+        // Should have kept 1 original + added 1 "Archived" system message
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.title == "Archived" }))
+    }
+
+    func testArchiveTranscriptKeepsPinned() {
+        let now = Date()
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .user, title: "A", body: "old pinned", timestamp: now.addingTimeInterval(-7200), isPinned: true),
+                TranscriptItem(role: .user, title: "B", body: "old", timestamp: now.addingTimeInterval(-7200)),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let archived = viewModel.archiveTranscript(olderThan: now.addingTimeInterval(-3600), keepPinned: true)
+        XCTAssertEqual(archived, 1) // Only the non-pinned one
+        XCTAssertTrue(viewModel.transcript.contains(where: { $0.body == "old pinned" }))
+    }
+
+    func testArchiveTranscriptNothingToArchive() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .user, title: "A", body: "new", timestamp: Date()),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let archived = viewModel.archiveTranscript(olderThan: Date().addingTimeInterval(-3600))
+        XCTAssertEqual(archived, 0)
+    }
+
+    func testIsSQLReadOnly() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertTrue(viewModel.isSQLReadOnly("SELECT * FROM trades;"))
+        XCTAssertFalse(viewModel.isSQLReadOnly("DROP TABLE trades;"))
+    }
+
     // MARK: - Combined search + complexity workflow
 
     func testSearchAndComplexityWorkflow() async {

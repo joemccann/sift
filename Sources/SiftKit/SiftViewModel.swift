@@ -281,6 +281,39 @@ public final class SiftViewModel: ObservableObject {
         settings.commandAliases.first(where: { $0.name == name })?.sql
     }
 
+    /// Format a SQL query with uppercased keywords
+    public func formatSQL(_ sql: String) -> String {
+        SQLFormatter.uppercaseKeywords(in: sql)
+    }
+
+    /// Archive old transcript items, optionally keeping pinned
+    public func archiveTranscript(olderThan cutoff: Date, keepPinned: Bool = true) -> Int {
+        let result: (kept: [TranscriptItem], archived: [TranscriptItem])
+        if keepPinned {
+            result = TranscriptArchiver.archiveKeepingPinned(items: transcript, olderThan: cutoff)
+        } else {
+            result = TranscriptArchiver.archive(items: transcript, olderThan: cutoff)
+        }
+        let archivedCount = result.archived.count
+        if archivedCount > 0 {
+            transcript = result.kept
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Archived",
+                    body: "Archived \(archivedCount) old transcript item\(archivedCount == 1 ? "" : "s")."
+                )
+            )
+            persistSnapshot()
+        }
+        return archivedCount
+    }
+
+    /// Check if SQL is read-only (safe for readonly mode)
+    public func isSQLReadOnly(_ sql: String) -> Bool {
+        SQLSanitizer.isReadOnly(sql)
+    }
+
     /// Check for duplicate user messages in transcript
     public var hasDuplicateMessages: Bool {
         TranscriptDeduplicator.hasDuplicates(in: transcript)
