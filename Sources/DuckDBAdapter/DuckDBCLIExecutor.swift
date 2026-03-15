@@ -115,15 +115,17 @@ public final class DuckDBCLIExecutor: @unchecked Sendable {
 
         let lines = output.components(separatedBy: "\n")
         for line in lines {
-            let parts = line.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+            let parts = line.split(separator: "|")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
             guard parts.count >= 4 else { continue }
             let schema = parts[0]
             let table = parts[1]
             let column = parts[2]
             let dataType = parts[3]
 
-            // Skip header row
-            guard schema != "table_schema" else { continue }
+            // Skip header row and separator lines
+            guard schema != "table_schema", !schema.hasPrefix("-"), !schema.hasPrefix("+") else { continue }
 
             let key = "\(schema).\(table)"
             if let idx = tableMap.firstIndex(where: { $0.key == key }) {

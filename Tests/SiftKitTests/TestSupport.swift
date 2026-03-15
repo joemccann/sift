@@ -13,6 +13,10 @@ struct MockExecutor: CommandExecuting {
     func executeRaw(argumentsLine: String) async throws -> DuckDBExecutionResult {
         result
     }
+
+    func discoverSchema(for source: DataSource) async throws -> [DiscoveredTable] {
+        []
+    }
 }
 
 struct MockChatResponder: ProviderResponding {

@@ -7,6 +7,7 @@ import SiftCore
 public protocol CommandExecuting: Sendable {
     func execute(plan: DuckDBCommandPlan) async throws -> DuckDBExecutionResult
     func executeRaw(argumentsLine: String) async throws -> DuckDBExecutionResult
+    func discoverSchema(for source: DataSource) async throws -> [DiscoveredTable]
 }
 
 extension DuckDBCLIExecutor: CommandExecuting {}
@@ -602,9 +603,8 @@ public final class SiftViewModel: ObservableObject {
     }
 
     private func discoverSchema(for source: DataSource, executor: any CommandExecuting) async {
-        guard let duckExecutor = executor as? DuckDBCLIExecutor else { return }
         do {
-            let tables = try await duckExecutor.discoverSchema(for: source)
+            let tables = try await executor.discoverSchema(for: source)
             guard !tables.isEmpty else { return }
 
             if let idx = sources.firstIndex(where: { $0.id == source.id }) {
