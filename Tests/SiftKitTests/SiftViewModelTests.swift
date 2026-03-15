@@ -2131,6 +2131,65 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.settings.commandAliases.isEmpty)
     }
 
+    // MARK: - Table extraction and clause count
+
+    func testExtractTableNamesFromSQL() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        let tables = viewModel.extractTableNames(from: "SELECT * FROM trades JOIN prices ON trades.id = prices.id;")
+        XCTAssertTrue(tables.contains("trades"))
+        XCTAssertTrue(tables.contains("prices"))
+    }
+
+    func testSQLClauseCount() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        XCTAssertEqual(viewModel.sqlClauseCount("SELECT * FROM trades;"), 2)
+        XCTAssertEqual(viewModel.sqlClauseCount("SELECT * FROM a JOIN b ON a.id = b.id WHERE x > 0 ORDER BY x LIMIT 10;"), 6)
+    }
+
+    func testTagCounts() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "X", tags: ["sql", "important"]),
+                TranscriptItem(role: .user, title: "You", body: "Y", tags: ["sql"]),
+                TranscriptItem(role: .assistant, title: "A", body: "Z", tags: ["important"]),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        let counts = viewModel.tagCounts
+        XCTAssertEqual(counts.count, 2) // "important" and "sql"
+        let importantCount = counts.first(where: { $0.tag == "important" })?.count
+        XCTAssertEqual(importantCount, 2)
+        let sqlCount = counts.first(where: { $0.tag == "sql" })?.count
+        XCTAssertEqual(sqlCount, 2)
+    }
+
+    func testTagCountsEmpty() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        XCTAssertTrue(viewModel.tagCounts.isEmpty)
+    }
+
     // MARK: - SQL formatting and archival
 
     func testFormatSQL() {

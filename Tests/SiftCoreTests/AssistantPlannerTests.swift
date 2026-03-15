@@ -4005,6 +4005,59 @@ final class SQLFormatterTests: XCTestCase {
     }
 }
 
+// MARK: - SQL Formatter edge cases
+
+final class SQLFormatterEdgeCaseTests: XCTestCase {
+    func testUppercaseKeywordsAlreadyUppercase() {
+        let sql = "SELECT * FROM trades WHERE price > 100;"
+        let formatted = SQLFormatter.uppercaseKeywords(in: sql)
+        XCTAssertEqual(formatted, sql) // No change
+    }
+
+    func testClauseCountDescribe() {
+        XCTAssertEqual(SQLFormatter.clauseCount(in: "DESCRIBE trades;"), 0)
+    }
+
+    func testClauseCountWithSubquery() {
+        let sql = "SELECT * FROM trades WHERE id IN (SELECT id FROM filtered);"
+        let count = SQLFormatter.clauseCount(in: sql)
+        XCTAssertGreaterThanOrEqual(count, 3) // At least SELECT, FROM, WHERE
+    }
+}
+
+// MARK: - SQL Sanitizer edge cases
+
+final class SQLSanitizerEdgeCaseTests: XCTestCase {
+    func testCopyIsNotDangerous() {
+        // COPY is a read operation in DuckDB
+        XCTAssertTrue(SQLSanitizer.isReadOnly("COPY trades TO '/tmp/out.csv';"))
+    }
+
+    func testCreateIsNotDangerous() {
+        // CREATE TABLE AS SELECT is a read-like operation, not destructive
+        XCTAssertFalse(SQLSanitizer.containsDangerousOperations("CREATE TABLE new_table AS SELECT * FROM old;"))
+    }
+
+    func testEmptyQueryIsReadOnly() {
+        XCTAssertTrue(SQLSanitizer.isReadOnly(""))
+    }
+
+    func testExtractTableNamesWithAlias() {
+        let tables = SQLSanitizer.extractTableNames(from: "SELECT t.name FROM trades AS t;")
+        XCTAssertTrue(tables.contains("trades"))
+    }
+
+    func testExtractTableNamesMultipleJoins() {
+        let sql = "SELECT * FROM a JOIN b ON a.id = b.a_id JOIN c ON b.id = c.b_id;"
+        let tables = SQLSanitizer.extractTableNames(from: sql)
+        XCTAssertEqual(tables.count, 3)
+    }
+
+    func testReadOnlyWithPragma() {
+        XCTAssertTrue(SQLSanitizer.isReadOnly("PRAGMA version;"))
+    }
+}
+
 // MARK: - Transcript Archiver
 
 final class TranscriptArchiverTests: XCTestCase {

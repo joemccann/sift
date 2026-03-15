@@ -309,6 +309,27 @@ public final class SiftViewModel: ObservableObject {
         return archivedCount
     }
 
+    /// Extract table names from a SQL query
+    public func extractTableNames(from sql: String) -> [String] {
+        SQLSanitizer.extractTableNames(from: sql)
+    }
+
+    /// Get clause count for a SQL query
+    public func sqlClauseCount(_ sql: String) -> Int {
+        SQLFormatter.clauseCount(in: sql)
+    }
+
+    /// All unique tags sorted with their counts
+    public var tagCounts: [(tag: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for item in transcript {
+            for tag in item.tags {
+                counts[tag, default: 0] += 1
+            }
+        }
+        return counts.sorted { $0.key < $1.key }.map { (tag: $0.key, count: $0.value) }
+    }
+
     /// Check if SQL is read-only (safe for readonly mode)
     public func isSQLReadOnly(_ sql: String) -> Bool {
         SQLSanitizer.isReadOnly(sql)
