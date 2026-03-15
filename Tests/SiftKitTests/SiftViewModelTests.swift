@@ -2131,6 +2131,80 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.settings.commandAliases.isEmpty)
     }
 
+    // MARK: - Full end-to-end workflow
+
+    func testEndToEndQueryThenBookmarkThenExport() async {
+        let result = DuckDBExecutionResult(
+            binaryPath: "/usr/bin/duckdb", arguments: [], sql: "SELECT * FROM trades;",
+            stdout: "symbol|price\nAAPL|185\n", stderr: "", exitCode: 0,
+            startedAt: Date(), endedAt: Date()
+        )
+        let viewModel = SiftViewModel(
+            executor: MockExecutor(result: result),
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // 1. Import source
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/data.parquet"))
+
+        // 2. Execute query
+        await viewModel.triggerPrompt("Preview this parquet file")
+        XCTAssertEqual(viewModel.commandCount, 1)
+
+        // 3. Tag the result
+        if let resultItem = viewModel.transcript.last(where: { if case .commandResult = $0.kind { return true }; return false }) {
+            viewModel.addTag("key-result", to: resultItem.id)
+            viewModel.togglePin(for: resultItem.id)
+        }
+
+        // 4. Bookmark it
+        await viewModel.triggerPrompt("/bookmark")
+        XCTAssertEqual(viewModel.settings.bookmarks.count, 1)
+
+        // 5. Export transcript
+        let markdown = viewModel.formatTranscriptAsMarkdown()
+        XCTAssertTrue(markdown.contains("read_parquet"))
+
+        // 6. Check stats
+        XCTAssertEqual(viewModel.pinnedItemCount, 1)
+        XCTAssertEqual(viewModel.totalTagCount, 1)
+        XCTAssertFalse(viewModel.uniqueCommandHistory.isEmpty)
+    }
+
+    func testEndToEndSetupThenImportThenReset() async {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // 1. Setup
+        viewModel.completeSetup(defaultProvider: .gemini, authMode: .apiKey, model: "flash", apiKey: "key-123")
+        XCTAssertEqual(viewModel.selectedProvider, .gemini)
+        XCTAssertTrue(viewModel.hasStoredAPIKey(for: .gemini))
+
+        // 2. Import sources
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/a.parquet"))
+        viewModel.importSource(url: URL(fileURLWithPath: "/tmp/b.csv"))
+        viewModel.setSourceAlias("Prices", for: viewModel.sources.first!.id)
+        viewModel.toggleFavorite(for: viewModel.sources.first!.id)
+        viewModel.addCommandAlias(name: "t", sql: "SHOW TABLES;")
+
+        XCTAssertEqual(viewModel.sourceKindCount, 2)
+        XCTAssertEqual(viewModel.favoriteCount, 1)
+        XCTAssertTrue(viewModel.hasAliasedSources)
+
+        // 3. Reset
+        await viewModel.triggerPrompt("/reset")
+        XCTAssertTrue(viewModel.sources.isEmpty)
+        XCTAssertTrue(viewModel.settings.bookmarks.isEmpty)
+    }
+
     // MARK: - Table extraction and clause count
 
     func testExtractTableNamesFromSQL() {
