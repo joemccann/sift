@@ -3718,3 +3718,62 @@ final class CommandAliasTests: XCTestCase {
     }
 }
 
+// MARK: - TranscriptExporter edge cases
+
+final class TranscriptExporterEdgeCaseTests: XCTestCase {
+    func testAsPlainTextEmpty() {
+        XCTAssertEqual(TranscriptExporter.asPlainText(from: []), "")
+    }
+
+    func testResultsAsCSVWithQuotesInOutput() {
+        let items = [
+            TranscriptItem(role: .assistant, title: "R", body: "ok",
+                           kind: .commandResult(exitCode: 0, stdout: "Hello \"World\"", stderr: "")),
+        ]
+        let csv = TranscriptExporter.resultsAsCSV(from: items)
+        // Quotes should be escaped
+        XCTAssertTrue(csv.contains("\"\"World\"\""))
+    }
+
+    func testResultsAsCSVWithNewlinesInOutput() {
+        let items = [
+            TranscriptItem(role: .assistant, title: "R", body: "ok",
+                           kind: .commandResult(exitCode: 0, stdout: "Line1\nLine2\nLine3", stderr: "")),
+        ]
+        let csv = TranscriptExporter.resultsAsCSV(from: items)
+        // Newlines should be replaced with spaces
+        XCTAssertTrue(csv.contains("Line1 Line2 Line3"))
+    }
+}
+
+// MARK: - TranscriptDeduplicator edge cases
+
+final class TranscriptDeduplicatorEdgeCaseTests: XCTestCase {
+    func testEmptyTranscriptNoDuplicates() {
+        XCTAssertFalse(TranscriptDeduplicator.hasDuplicates(in: []))
+    }
+
+    func testMultipleDuplicatesDetected() {
+        let items = [
+            TranscriptItem(role: .user, title: "You", body: "A"),
+            TranscriptItem(role: .user, title: "You", body: "B"),
+            TranscriptItem(role: .user, title: "You", body: "A"),
+            TranscriptItem(role: .user, title: "You", body: "B"),
+            TranscriptItem(role: .user, title: "You", body: "C"),
+        ]
+        let dupes = TranscriptDeduplicator.duplicateMessages(in: items)
+        XCTAssertEqual(dupes.count, 2) // A and B
+    }
+
+    func testDuplicatesSorted() {
+        let items = [
+            TranscriptItem(role: .user, title: "You", body: "Zebra"),
+            TranscriptItem(role: .user, title: "You", body: "Alpha"),
+            TranscriptItem(role: .user, title: "You", body: "Zebra"),
+            TranscriptItem(role: .user, title: "You", body: "Alpha"),
+        ]
+        let dupes = TranscriptDeduplicator.duplicateMessages(in: items)
+        XCTAssertEqual(dupes, ["Alpha", "Zebra"])
+    }
+}
+

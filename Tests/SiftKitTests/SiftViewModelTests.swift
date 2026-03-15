@@ -2131,6 +2131,44 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.settings.commandAliases.isEmpty)
     }
 
+    // MARK: - Alias edge cases
+
+    func testResolveNonexistentAlias() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        XCTAssertNil(viewModel.resolveAlias("nonexistent"))
+    }
+
+    func testRemoveNonexistentAliasDoesNothing() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.addCommandAlias(name: "a", sql: "SELECT 1;")
+        viewModel.removeCommandAlias(name: "nonexistent")
+        XCTAssertEqual(viewModel.settings.commandAliases.count, 1)
+    }
+
+    func testAddAliasWithWhitespaceSQL() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+        viewModel.addCommandAlias(name: "t", sql: "  ")
+        XCTAssertTrue(viewModel.settings.commandAliases.isEmpty) // empty SQL rejected
+    }
+
     // MARK: - Deduplication
 
     func testHasDuplicateMessages() {

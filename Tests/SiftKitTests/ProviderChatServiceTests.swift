@@ -137,6 +137,33 @@ final class ProviderDiagnosticsEdgeCaseTests: XCTestCase {
         XCTAssertTrue(claude.environmentKeyPresent)
     }
 
+    func testDetectsStoredKeyWithoutEnvKey() {
+        let statuses = ProviderDiagnostics.detect(
+            environment: ["PATH": ""],
+            secretStore: MemorySecretStore(keys: [.openAI: "stored-key"]),
+            executableExists: { _ in false }
+        )
+        let openai = statuses.first(where: { $0.provider == .openAI })!
+        XCTAssertTrue(openai.apiKeyPresent)
+        XCTAssertFalse(openai.environmentKeyPresent)
+    }
+
+    func testAllProvidersHaveStatus() {
+        let statuses = ProviderDiagnostics.detect(
+            environment: ["PATH": ""],
+            secretStore: MemorySecretStore(),
+            executableExists: { _ in false }
+        )
+        for provider in ProviderKind.allCases {
+            XCTAssertTrue(statuses.contains(where: { $0.provider == provider }))
+        }
+    }
+
+    func testStatusSummaryForCLIWithKey() {
+        let status = ProviderStatus(provider: .claude, cliInstalled: true, cliPath: "/bin/claude", apiKeyPresent: true, environmentKeyPresent: false)
+        XCTAssertEqual(status.statusSummary, "CLI ready")
+    }
+
     func testOpenAIEnvironmentKey() {
         let statuses = ProviderDiagnostics.detect(
             environment: ["OPENAI_API_KEY": "sk-test", "PATH": ""],

@@ -421,6 +421,59 @@ final class VisualizationEdgeCaseTests: XCTestCase {
         XCTAssertLessThan(empty.transcriptDensity, full.transcriptDensity)
     }
 
+    func testVisualizationSuccessVsFailureWeight() {
+        let successSnapshot = MetalWorkspaceSnapshot(
+            destination: .assistant, provider: .claude, sourceKind: .parquet,
+            sourceCount: 1, transcriptCount: 5, providerReadiness: 1,
+            executionState: .success, commandDurationMilliseconds: 100,
+            commandOutputBytes: 500, isRunning: false
+        )
+        let failSnapshot = MetalWorkspaceSnapshot(
+            destination: .assistant, provider: .claude, sourceKind: .parquet,
+            sourceCount: 1, transcriptCount: 5, providerReadiness: 1,
+            executionState: .failure, commandDurationMilliseconds: 100,
+            commandOutputBytes: 500, isRunning: false
+        )
+
+        let successViz = MetalWorkspaceVisualization(snapshot: successSnapshot, signalCount: 12)
+        let failViz = MetalWorkspaceVisualization(snapshot: failSnapshot, signalCount: 12)
+
+        XCTAssertLessThan(successViz.commandStateWeight, failViz.commandStateWeight)
+    }
+
+    func testVisualizationRunningVsNotRunning() {
+        let runningSnapshot = MetalWorkspaceSnapshot(
+            destination: .assistant, provider: .claude, sourceKind: .parquet,
+            sourceCount: 1, transcriptCount: 3, providerReadiness: 1,
+            executionState: .success, commandDurationMilliseconds: 50,
+            commandOutputBytes: 200, isRunning: true
+        )
+        let idleSnapshot = MetalWorkspaceSnapshot(
+            destination: .assistant, provider: .claude, sourceKind: .parquet,
+            sourceCount: 1, transcriptCount: 3, providerReadiness: 1,
+            executionState: .success, commandDurationMilliseconds: 50,
+            commandOutputBytes: 200, isRunning: false
+        )
+
+        let runViz = MetalWorkspaceVisualization(snapshot: runningSnapshot, signalCount: 12)
+        let idleViz = MetalWorkspaceVisualization(snapshot: idleSnapshot, signalCount: 12)
+
+        XCTAssertEqual(runViz.runIntensity, 1)
+        XCTAssertEqual(idleViz.runIntensity, 0)
+    }
+
+    func testVisualizationNilSourceKind() {
+        let snapshot = MetalWorkspaceSnapshot(
+            destination: .assistant, provider: .claude, sourceKind: nil,
+            sourceCount: 0, transcriptCount: 1, providerReadiness: 1,
+            executionState: .idle, commandDurationMilliseconds: 0,
+            commandOutputBytes: 0, isRunning: false
+        )
+        let viz = MetalWorkspaceVisualization(snapshot: snapshot, signalCount: 16)
+        XCTAssertEqual(viz.signalBars.count, 16)
+        XCTAssertTrue(viz.signalBars.allSatisfy { $0 >= 0 && $0 <= 1 })
+    }
+
     func testVisualizationCommandDurationRecorded() {
         let viz = MetalWorkspaceVisualization(
             snapshot: MetalWorkspaceSnapshot(
