@@ -4539,3 +4539,148 @@ final class SQLFormatterDuckDBTests: XCTestCase {
     }
 }
 
+// MARK: - DuckDB Query Builder
+
+final class DuckDBQueryBuilderTests: XCTestCase {
+    func testSimpleSelect() {
+        let sql = DuckDBQueryBuilder(table: "trades").build()
+        XCTAssertEqual(sql, "SELECT * FROM trades;")
+    }
+
+    func testSelectWithColumns() {
+        let sql = DuckDBQueryBuilder(table: "trades")
+            .selecting(["symbol", "price", "volume"])
+            .build()
+        XCTAssertEqual(sql, "SELECT symbol, price, volume FROM trades;")
+    }
+
+    func testSelectWithWhere() {
+        let sql = DuckDBQueryBuilder(table: "trades")
+            .filtering("price > 100")
+            .build()
+        XCTAssertEqual(sql, "SELECT * FROM trades WHERE price > 100;")
+    }
+
+    func testSelectWithOrderBy() {
+        let sql = DuckDBQueryBuilder(table: "trades")
+            .ordered(by: "price", descending: true)
+            .build()
+        XCTAssertEqual(sql, "SELECT * FROM trades ORDER BY price DESC;")
+    }
+
+    func testSelectWithLimit() {
+        let sql = DuckDBQueryBuilder(table: "trades")
+            .limited(to: 25)
+            .build()
+        XCTAssertEqual(sql, "SELECT * FROM trades LIMIT 25;")
+    }
+
+    func testSelectWithGroupBy() {
+        let sql = DuckDBQueryBuilder(table: "trades")
+            .selecting(["symbol", "COUNT(*)"])
+            .grouped(by: "symbol")
+            .build()
+        XCTAssertEqual(sql, "SELECT symbol, COUNT(*) FROM trades GROUP BY symbol;")
+    }
+
+    func testComplexQuery() {
+        let sql = DuckDBQueryBuilder(table: "trades")
+            .selecting(["symbol", "AVG(price) AS avg_price"])
+            .filtering("volume > 1000")
+            .grouped(by: "symbol")
+            .ordered(by: "avg_price", descending: true)
+            .limited(to: 10)
+            .build()
+        XCTAssertTrue(sql.contains("SELECT symbol, AVG(price) AS avg_price"))
+        XCTAssertTrue(sql.contains("FROM trades"))
+        XCTAssertTrue(sql.contains("WHERE volume > 1000"))
+        XCTAssertTrue(sql.contains("GROUP BY symbol"))
+        XCTAssertTrue(sql.contains("ORDER BY avg_price DESC"))
+        XCTAssertTrue(sql.contains("LIMIT 10"))
+    }
+
+    func testQueryBuilderEquality() {
+        let a = DuckDBQueryBuilder(table: "trades").limited(to: 10)
+        let b = DuckDBQueryBuilder(table: "trades").limited(to: 10)
+        XCTAssertEqual(a, b)
+    }
+
+    func testQueryBuilderInequality() {
+        let a = DuckDBQueryBuilder(table: "trades").limited(to: 10)
+        let b = DuckDBQueryBuilder(table: "orders").limited(to: 10)
+        XCTAssertNotEqual(a, b)
+    }
+
+    func testChainedBuilderImmutable() {
+        let base = DuckDBQueryBuilder(table: "trades")
+        let withLimit = base.limited(to: 5)
+        let withOrder = base.ordered(by: "price")
+
+        // base should not be modified
+        XCTAssertNil(base.limit)
+        XCTAssertNil(base.orderBy)
+        XCTAssertEqual(withLimit.limit, 5)
+        XCTAssertEqual(withOrder.orderBy, "price")
+    }
+
+    func testAscendingByDefault() {
+        let sql = DuckDBQueryBuilder(table: "t")
+            .ordered(by: "x")
+            .build()
+        XCTAssertTrue(sql.contains("ASC"))
+    }
+}
+
+// MARK: - Source Statistics
+
+final class SourceStatisticsTests: XCTestCase {
+    func testEmptyStatistics() {
+        let stats = SourceStatistics(sources: [])
+        XCTAssertEqual(stats.totalSources, 0)
+        XCTAssertEqual(stats.favoriteCount, 0)
+        XCTAssertEqual(stats.remoteCount, 0)
+    }
+
+    func testStatisticsWithMixedSources() {
+        let sources = [
+            DataSource(url: URL(fileURLWithPath: "/tmp/a.parquet"), kind: .parquet, isFavorite: true),
+            DataSource(url: URL(fileURLWithPath: "/tmp/b.parquet"), kind: .parquet, alias: "Prices"),
+            DataSource(url: URL(fileURLWithPath: "/tmp/c.csv"), kind: .csv, notes: "Daily data"),
+            DataSource(url: URL(fileURLWithPath: "/tmp/d.duckdb"), kind: .duckdb),
+        ]
+        let stats = SourceStatistics(sources: sources)
+        XCTAssertEqual(stats.totalSources, 4)
+        XCTAssertEqual(stats.byKind[.parquet], 2)
+        XCTAssertEqual(stats.byKind[.csv], 1)
+        XCTAssertEqual(stats.byKind[.duckdb], 1)
+        XCTAssertNil(stats.byKind[.json])
+        XCTAssertEqual(stats.favoriteCount, 1)
+        XCTAssertEqual(stats.aliasedCount, 1)
+        XCTAssertEqual(stats.withNotesCount, 1)
+        XCTAssertEqual(stats.remoteCount, 0)
+    }
+
+    func testStatisticsSummary() {
+        let sources = [
+            DataSource(url: URL(fileURLWithPath: "/tmp/a.parquet"), kind: .parquet),
+        ]
+        let stats = SourceStatistics(sources: sources)
+        let summary = stats.summary
+        XCTAssertTrue(summary.contains("1 source"))
+        XCTAssertTrue(summary.contains("Parquet"))
+    }
+
+    func testStatisticsWithRemote() {
+        let remote = DataSource.fromRemoteURL("https://example.com/data.csv")!
+        let stats = SourceStatistics(sources: [remote])
+        XCTAssertEqual(stats.remoteCount, 1)
+    }
+
+    func testStatisticsEquality() {
+        let sources = [DataSource(url: URL(fileURLWithPath: "/tmp/a.parquet"), kind: .parquet)]
+        let a = SourceStatistics(sources: sources)
+        let b = SourceStatistics(sources: sources)
+        XCTAssertEqual(a, b)
+    }
+}
+

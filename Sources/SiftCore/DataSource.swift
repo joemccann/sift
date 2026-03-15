@@ -217,6 +217,97 @@ public struct SourceComparison: Equatable, Sendable {
     }
 }
 
+// MARK: - DuckDB Query Builder
+
+public struct DuckDBQueryBuilder: Equatable, Sendable {
+    public var table: String
+    public var columns: [String]
+    public var whereClause: String?
+    public var orderBy: String?
+    public var descending: Bool
+    public var limit: Int?
+    public var groupBy: String?
+
+    public init(table: String) {
+        self.table = table
+        self.columns = ["*"]
+        self.descending = false
+    }
+
+    public func selecting(_ cols: [String]) -> DuckDBQueryBuilder {
+        var copy = self
+        copy.columns = cols
+        return copy
+    }
+
+    public func filtering(_ condition: String) -> DuckDBQueryBuilder {
+        var copy = self
+        copy.whereClause = condition
+        return copy
+    }
+
+    public func ordered(by column: String, descending: Bool = false) -> DuckDBQueryBuilder {
+        var copy = self
+        copy.orderBy = column
+        copy.descending = descending
+        return copy
+    }
+
+    public func limited(to count: Int) -> DuckDBQueryBuilder {
+        var copy = self
+        copy.limit = count
+        return copy
+    }
+
+    public func grouped(by column: String) -> DuckDBQueryBuilder {
+        var copy = self
+        copy.groupBy = column
+        return copy
+    }
+
+    public func build() -> String {
+        var parts = ["SELECT \(columns.joined(separator: ", "))"]
+        parts.append("FROM \(table)")
+        if let whereClause { parts.append("WHERE \(whereClause)") }
+        if let groupBy { parts.append("GROUP BY \(groupBy)") }
+        if let orderBy { parts.append("ORDER BY \(orderBy) \(descending ? "DESC" : "ASC")") }
+        if let limit { parts.append("LIMIT \(limit)") }
+        return parts.joined(separator: " ") + ";"
+    }
+}
+
+// MARK: - Source Statistics
+
+public struct SourceStatistics: Equatable, Sendable {
+    public let totalSources: Int
+    public let byKind: [DataSourceKind: Int]
+    public let favoriteCount: Int
+    public let aliasedCount: Int
+    public let withNotesCount: Int
+    public let remoteCount: Int
+
+    public init(sources: [DataSource]) {
+        self.totalSources = sources.count
+        self.byKind = Dictionary(grouping: sources, by: \.kind).mapValues(\.count)
+        self.favoriteCount = sources.filter(\.isFavorite).count
+        self.aliasedCount = sources.filter { $0.alias != nil }.count
+        self.withNotesCount = sources.filter { $0.notes != nil && !($0.notes?.isEmpty ?? true) }.count
+        self.remoteCount = sources.filter(\.isRemote).count
+    }
+
+    public var summary: String {
+        var lines = ["\(totalSources) source\(totalSources == 1 ? "" : "s")"]
+        for kind in DataSourceKind.allCases {
+            if let count = byKind[kind], count > 0 {
+                lines.append("  \(kind.displayLabel): \(count)")
+            }
+        }
+        if favoriteCount > 0 { lines.append("  Favorites: \(favoriteCount)") }
+        if remoteCount > 0 { lines.append("  Remote: \(remoteCount)") }
+        return lines.joined(separator: "\n")
+    }
+}
+
 // MARK: - SQL Formatter
 
 public enum SQLFormatter {
