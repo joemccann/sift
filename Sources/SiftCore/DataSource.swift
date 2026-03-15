@@ -37,6 +37,32 @@ public enum DataSourceKind: String, CaseIterable, Codable, Sendable {
     }
 }
 
+public struct DiscoveredTable: Codable, Equatable, Sendable {
+    public let schema: String
+    public let name: String
+    public let columns: [DiscoveredColumn]
+
+    public init(schema: String, name: String, columns: [DiscoveredColumn] = []) {
+        self.schema = schema
+        self.name = name
+        self.columns = columns
+    }
+
+    public var qualifiedName: String {
+        schema == "main" ? name : "\(schema).\(name)"
+    }
+}
+
+public struct DiscoveredColumn: Codable, Equatable, Sendable {
+    public let name: String
+    public let type: String
+
+    public init(name: String, type: String) {
+        self.name = name
+        self.type = type
+    }
+}
+
 public struct DataSource: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public let url: URL
@@ -45,6 +71,7 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
     public var alias: String?
     public var isFavorite: Bool
     public var notes: String?
+    public var discoveredTables: [DiscoveredTable]?
 
     public init(
         id: UUID = UUID(),
@@ -53,7 +80,8 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
         addedAt: Date = Date(),
         alias: String? = nil,
         isFavorite: Bool = false,
-        notes: String? = nil
+        notes: String? = nil,
+        discoveredTables: [DiscoveredTable]? = nil
     ) {
         self.id = id
         self.url = url
@@ -62,6 +90,16 @@ public struct DataSource: Identifiable, Codable, Equatable, Sendable {
         self.alias = alias
         self.isFavorite = isFavorite
         self.notes = notes
+        self.discoveredTables = discoveredTables
+    }
+
+    /// Schema summary for use in AI prompts
+    public var schemaSummary: String? {
+        guard let tables = discoveredTables, !tables.isEmpty else { return nil }
+        return tables.map { table in
+            let cols = table.columns.map { "\($0.name) (\($0.type))" }.joined(separator: ", ")
+            return "\(table.qualifiedName): \(cols)"
+        }.joined(separator: "\n")
     }
 
     /// Returns the alias if set, otherwise the filename

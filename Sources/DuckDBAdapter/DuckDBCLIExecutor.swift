@@ -94,6 +94,48 @@ public final class DuckDBCLIExecutor: @unchecked Sendable {
         )
     }
 
+    public func discoverSchema(for source: DataSource) async throws -> [DiscoveredTable] {
+        guard source.kind == .duckdb else { return [] }
+
+        let schemaSQL = """
+        SELECT table_schema, table_name, column_name, data_type
+        FROM information_schema.columns
+        ORDER BY table_schema, table_name, ordinal_position;
+        """
+
+        let plan = DuckDBCommandPlan(source: source, sql: schemaSQL, explanation: "Schema discovery")
+        let result = try await execute(plan: plan)
+        guard result.exitCode == 0 else { return [] }
+
+        return Self.parseSchemaOutput(result.stdout)
+    }
+
+    public static func parseSchemaOutput(_ output: String) -> [DiscoveredTable] {
+        var tableMap: [(key: String, schema: String, name: String, columns: [DiscoveredColumn])] = []
+
+        let lines = output.components(separatedBy: "\n")
+        for line in lines {
+            let parts = line.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+            guard parts.count >= 4 else { continue }
+            let schema = parts[0]
+            let table = parts[1]
+            let column = parts[2]
+            let dataType = parts[3]
+
+            // Skip header row
+            guard schema != "table_schema" else { continue }
+
+            let key = "\(schema).\(table)"
+            if let idx = tableMap.firstIndex(where: { $0.key == key }) {
+                tableMap[idx].columns.append(DiscoveredColumn(name: column, type: dataType))
+            } else {
+                tableMap.append((key: key, schema: schema, name: table, columns: [DiscoveredColumn(name: column, type: dataType)]))
+            }
+        }
+
+        return tableMap.map { DiscoveredTable(schema: $0.schema, name: $0.name, columns: $0.columns) }
+    }
+
     public func execute(plan: DuckDBCommandPlan) async throws -> DuckDBExecutionResult {
         let request = Self.request(for: plan, binaryPath: binaryPath)
         return try await execute(request: request)

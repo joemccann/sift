@@ -239,12 +239,14 @@ public enum AssistantPlanner {
         }
 
         guard let source else {
-            if trimmed.localizedCaseInsensitiveContains("parquet") || trimmed.localizedCaseInsensitiveContains("duckdb") {
-                return .assistantReply("Use the toolbar to open a `.parquet` or `.duckdb` source first, then I can run real DuckDB commands against it.")
-            }
+            let dataKeywords = ["parquet", "duckdb", "show tables", "preview", "schema",
+                                "count", "query", "select", "rows", "records", "data",
+                                "table", "column", "csv", "json", "sql", "database",
+                                "show me", "how many", "summarize", "describe"]
+            let looksLikeDataQuery = dataKeywords.contains { trimmed.localizedCaseInsensitiveContains($0) }
 
-            if trimmed.localizedCaseInsensitiveContains("show tables") || trimmed.localizedCaseInsensitiveContains("preview this") {
-                return .assistantReply("Open a local `.duckdb` or `.parquet` source first. After that you can ask for a preview, schema, row count, or paste raw SQL with `/sql ...`.")
+            if looksLikeDataQuery {
+                return .assistantReply("**No data source connected.** Use the **Open Source** button in the toolbar to attach a `.duckdb`, `.parquet`, `.csv`, or `.json` file first, then I can query it for you.")
             }
 
             return .providerPrompt(trimmed)

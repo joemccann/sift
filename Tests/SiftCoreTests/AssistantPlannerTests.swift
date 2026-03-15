@@ -29,7 +29,7 @@ final class AssistantPlannerTests: XCTestCase {
             return XCTFail("Expected assistant reply")
         }
 
-        XCTAssertTrue(reply.contains("Open a local `.duckdb` or `.parquet` source first"))
+        XCTAssertTrue(reply.contains("No data source connected"))
     }
 
     func testParquetPreviewUsesReadParquet() {
@@ -1048,7 +1048,7 @@ final class ProviderPromptTests: XCTestCase {
     }
 
     func testCodeRelatedQuestionUsesProviderPrompt() {
-        let action = AssistantPlanner.plan(prompt: "Write a Python script to process CSV files", source: nil)
+        let action = AssistantPlanner.plan(prompt: "Explain how neural networks learn", source: nil)
 
         guard case .providerPrompt = action else {
             return XCTFail("Expected provider prompt, got \(action)")

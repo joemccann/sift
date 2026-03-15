@@ -88,7 +88,7 @@ final class SiftViewModelTests: XCTestCase {
         await viewModel.sendPrompt()
 
         XCTAssertEqual(viewModel.transcript.last?.role, .assistant)
-        XCTAssertTrue(viewModel.transcript.last?.body.contains("Open a local `.duckdb` or `.parquet` source first") == true)
+        XCTAssertTrue(viewModel.transcript.last?.body.contains("No data source connected") == true)
     }
 
     func testSendPromptExecutesAndStoresLastResult() async {

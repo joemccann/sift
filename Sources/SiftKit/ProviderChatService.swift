@@ -317,10 +317,21 @@ public final class ProviderChatService: ProviderResponding, @unchecked Sendable 
             Example: SELECT * FROM read_json('\(source.path)') LIMIT 10;
             """
         case .duckdb:
-            sourceContext = """
-            The source is a DuckDB database at: \(source.path)
-            Query tables directly. If you don't know the schema, use SHOW TABLES; first.
-            """
+            if let schema = source.schemaSummary {
+                sourceContext = """
+                The source is a DuckDB database at: \(source.path)
+                
+                Known schema:
+                \(schema)
+                
+                Use fully qualified table names if the schema is not 'main' (e.g., SELECT * FROM md.equities_daily).
+                """
+            } else {
+                sourceContext = """
+                The source is a DuckDB database at: \(source.path)
+                Query tables directly. To discover tables: SELECT table_schema, table_name FROM information_schema.tables;
+                """
+            }
         }
 
         return """

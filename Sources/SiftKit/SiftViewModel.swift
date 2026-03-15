@@ -592,6 +592,45 @@ public final class SiftViewModel: ObservableObject {
             )
         )
         persistSnapshot()
+
+        // Auto-discover schema for DuckDB sources
+        if source.kind == .duckdb, let executor = executor {
+            Task {
+                await discoverSchema(for: source, executor: executor)
+            }
+        }
+    }
+
+    private func discoverSchema(for source: DataSource, executor: any CommandExecuting) async {
+        guard let duckExecutor = executor as? DuckDBCLIExecutor else { return }
+        do {
+            let tables = try await duckExecutor.discoverSchema(for: source)
+            guard !tables.isEmpty else { return }
+
+            if let idx = sources.firstIndex(where: { $0.id == source.id }) {
+                sources[idx].discoveredTables = tables
+                if selectedSource?.id == source.id {
+                    selectedSource = sources[idx]
+                }
+            }
+
+            let tableList = tables.map { t in
+                let cols = t.columns.prefix(5).map(\.name).joined(separator: ", ")
+                let suffix = t.columns.count > 5 ? " + \(t.columns.count - 5) more" : ""
+                return "• **\(t.qualifiedName)** — \(cols)\(suffix)"
+            }.joined(separator: "\n")
+
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Schema Discovered",
+                    body: "Found \(tables.count) table\(tables.count == 1 ? "" : "s"):\n\n\(tableList)"
+                )
+            )
+            persistSnapshot()
+        } catch {
+            // Schema discovery is best-effort — don't block on failure
+        }
     }
 
     @MainActor
