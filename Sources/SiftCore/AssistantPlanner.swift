@@ -820,13 +820,36 @@ public enum AssistantPlanner {
     }
 
     private static func looksLikeSQL(_ prompt: String) -> Bool {
-        let keywords = ["select", "show", "describe", "pragma", "with", "from", "explain", "create", "insert", "update", "delete", "drop", "alter", "copy", "summarize"]
-        let firstToken = prompt
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .split(separator: " ")
-            .first?
-            .lowercased() ?? ""
-        return keywords.contains(firstToken)
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tokens = trimmed.lowercased().split(separator: " ").map(String.init)
+        guard let first = tokens.first else { return false }
+
+        // These keywords are unambiguous SQL starters
+        let unambiguous = ["select", "pragma", "with", "explain", "create", "insert",
+                           "update", "delete", "drop", "alter", "copy", "summarize"]
+        if unambiguous.contains(first) { return true }
+
+        // "show" is only SQL if followed by a SQL object keyword, not natural language
+        if first == "show" {
+            let second = tokens.count > 1 ? tokens[1] : ""
+            let sqlObjects = ["tables", "table", "columns", "databases", "schemas",
+                              "views", "indexes", "indices", "functions", "sequences"]
+            return sqlObjects.contains(second)
+        }
+
+        // "describe" is SQL if followed by a table name (single word, no "the", "me", "all")
+        if first == "describe" {
+            let second = tokens.count > 1 ? tokens[1] : ""
+            let naturalWords: Set<String> = ["the", "this", "me", "my", "all", "a", "what", "how"]
+            return !naturalWords.contains(second) && !second.isEmpty
+        }
+
+        // "from" is SQL if followed by a table name (e.g., "FROM trades SELECT ...")
+        if first == "from" {
+            return tokens.count >= 2
+        }
+
+        return false
     }
 
     /// Extracts a table name from "summarize [table]" or "stats for [table]"
