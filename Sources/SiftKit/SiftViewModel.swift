@@ -1195,6 +1195,27 @@ public final class SiftViewModel: ObservableObject {
         }
     }
 
+    /// Search transcript with combined text query and tag filter
+    public func searchTranscript(query: String, withTag tag: String?) -> [TranscriptItem] {
+        var results = transcript
+        if let tag, !tag.isEmpty {
+            results = results.filter { $0.tags.contains(tag) }
+        }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            results = results.filter {
+                $0.body.localizedCaseInsensitiveContains(trimmed) ||
+                $0.title.localizedCaseInsensitiveContains(trimmed)
+            }
+        }
+        return results
+    }
+
+    /// Estimate the complexity of a SQL query
+    public func estimateQueryComplexity(_ sql: String) -> QueryComplexityLevel {
+        QueryComplexityEstimator.estimate(sql)
+    }
+
     public func rerunCommand(at index: Int?) async {
         // Find commands in reverse order from the transcript
         let commandItems = transcript.compactMap { item -> (sql: String, source: DataSource)? in

@@ -3777,3 +3777,100 @@ final class TranscriptDeduplicatorEdgeCaseTests: XCTestCase {
     }
 }
 
+// MARK: - Query Complexity Estimator
+
+final class QueryComplexityEstimatorTests: XCTestCase {
+    func testSimpleSelect() {
+        XCTAssertEqual(QueryComplexityEstimator.estimate("SELECT * FROM trades;"), .simple)
+    }
+
+    func testSimpleCount() {
+        XCTAssertEqual(QueryComplexityEstimator.estimate("SELECT COUNT(*) FROM trades;"), .simple)
+    }
+
+    func testModerateJoin() {
+        XCTAssertEqual(QueryComplexityEstimator.estimate("SELECT * FROM trades JOIN prices ON trades.id = prices.trade_id;"), .moderate)
+    }
+
+    func testModerateGroupBy() {
+        XCTAssertEqual(QueryComplexityEstimator.estimate("SELECT symbol, COUNT(*) FROM trades GROUP BY symbol;"), .moderate)
+    }
+
+    func testComplexCTE() {
+        let sql = "WITH cte AS (SELECT * FROM trades) SELECT * FROM cte JOIN prices ON cte.id = prices.id;"
+        XCTAssertEqual(QueryComplexityEstimator.estimate(sql), .complex)
+    }
+
+    func testComplexWindowFunction() {
+        let sql = "SELECT *, ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date) FROM trades;"
+        XCTAssertEqual(QueryComplexityEstimator.estimate(sql), .moderate)
+    }
+
+    func testModerateUnion() {
+        XCTAssertEqual(QueryComplexityEstimator.estimate("SELECT * FROM a UNION SELECT * FROM b;"), .moderate)
+    }
+
+    func testComplexSubquery() {
+        let sql = "SELECT * FROM trades WHERE price > (SELECT AVG(price) FROM trades);"
+        XCTAssertEqual(QueryComplexityEstimator.estimate(sql), .moderate)
+    }
+
+    func testDisplayLabels() {
+        XCTAssertEqual(QueryComplexityLevel.simple.displayLabel, "Simple")
+        XCTAssertEqual(QueryComplexityLevel.moderate.displayLabel, "Moderate")
+        XCTAssertEqual(QueryComplexityLevel.complex.displayLabel, "Complex")
+    }
+}
+
+// MARK: - DuckDB Type Detection
+
+final class DuckDBTypeDetectionTests: XCTestCase {
+    func testIntegerTypes() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "INTEGER"), .integer)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "BIGINT"), .integer)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "SMALLINT"), .integer)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "TINYINT"), .integer)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "HUGEINT"), .integer)
+    }
+
+    func testDecimalTypes() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "FLOAT"), .decimal)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "DOUBLE"), .decimal)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "DECIMAL(10,2)"), .decimal)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "REAL"), .decimal)
+    }
+
+    func testTextTypes() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "VARCHAR"), .text)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "TEXT"), .text)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "VARCHAR(255)"), .text)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "UUID"), .text)
+    }
+
+    func testBooleanType() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "BOOLEAN"), .boolean)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "BOOL"), .boolean)
+    }
+
+    func testTimestampTypes() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "TIMESTAMP"), .timestamp)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "TIMESTAMP WITH TIME ZONE"), .timestamp)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "DATETIME"), .timestamp)
+    }
+
+    func testDateType() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "DATE"), .date)
+    }
+
+    func testBlobTypes() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "BLOB"), .blob)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "BYTEA"), .blob)
+    }
+
+    func testOtherType() {
+        XCTAssertEqual(DuckDBColumnType.detect(from: "STRUCT"), .other)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "MAP"), .other)
+        XCTAssertEqual(DuckDBColumnType.detect(from: "LIST"), .other)
+    }
+}
+

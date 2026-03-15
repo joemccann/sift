@@ -217,6 +217,81 @@ public struct SourceComparison: Equatable, Sendable {
     }
 }
 
+// MARK: - DuckDB Query Complexity
+
+public enum QueryComplexityLevel: String, Sendable {
+    case simple    // SELECT, COUNT, DESCRIBE
+    case moderate  // JOIN, GROUP BY, subquery
+    case complex   // multiple JOINs, window functions, CTEs
+
+    public var displayLabel: String {
+        switch self {
+        case .simple: return "Simple"
+        case .moderate: return "Moderate"
+        case .complex: return "Complex"
+        }
+    }
+}
+
+public enum QueryComplexityEstimator {
+    public static func estimate(_ sql: String) -> QueryComplexityLevel {
+        let upper = sql.uppercased()
+        var score = 0
+
+        if upper.contains("JOIN") { score += 2 }
+        if upper.contains("GROUP BY") { score += 1 }
+        if upper.contains("HAVING") { score += 1 }
+        if upper.contains("WINDOW") || upper.contains("OVER (") { score += 2 }
+        if upper.contains("WITH ") && upper.contains(" AS (") { score += 2 } // CTE
+        if upper.contains("UNION") { score += 1 }
+        if upper.contains("INTERSECT") || upper.contains("EXCEPT") { score += 1 }
+        if upper.components(separatedBy: "SELECT").count > 2 { score += 2 } // subquery
+
+        if score >= 4 { return .complex }
+        if score >= 1 { return .moderate }
+        return .simple
+    }
+}
+
+// MARK: - DuckDB Type Detection
+
+public enum DuckDBColumnType: String, Sendable {
+    case integer
+    case decimal
+    case text
+    case boolean
+    case timestamp
+    case date
+    case blob
+    case other
+
+    public static func detect(from typeString: String) -> DuckDBColumnType {
+        let upper = typeString.uppercased()
+        if upper.contains("INT") || upper == "BIGINT" || upper == "SMALLINT" || upper == "TINYINT" || upper == "HUGEINT" {
+            return .integer
+        }
+        if upper.contains("FLOAT") || upper.contains("DOUBLE") || upper.contains("DECIMAL") || upper.contains("NUMERIC") || upper == "REAL" {
+            return .decimal
+        }
+        if upper.contains("VARCHAR") || upper.contains("TEXT") || upper.contains("CHAR") || upper == "STRING" || upper == "UUID" {
+            return .text
+        }
+        if upper == "BOOLEAN" || upper == "BOOL" {
+            return .boolean
+        }
+        if upper.contains("TIMESTAMP") || upper.contains("DATETIME") {
+            return .timestamp
+        }
+        if upper == "DATE" {
+            return .date
+        }
+        if upper.contains("BLOB") || upper.contains("BYTEA") {
+            return .blob
+        }
+        return .other
+    }
+}
+
 // MARK: - DuckDB Error Recovery
 
 public enum DuckDBErrorRecovery {

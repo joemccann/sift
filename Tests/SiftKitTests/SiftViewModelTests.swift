@@ -2131,6 +2131,49 @@ final class SiftViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.settings.commandAliases.isEmpty)
     }
 
+    // MARK: - Search with tag filter
+
+    func testSearchTranscriptWithTagFilter() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [
+                TranscriptItem(role: .assistant, title: "A", body: "AAPL data", tags: ["market"]),
+                TranscriptItem(role: .user, title: "You", body: "Show AAPL", tags: ["request"]),
+                TranscriptItem(role: .assistant, title: "A", body: "AAPL result", tags: ["market"]),
+            ])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        // Search with tag filter
+        let results = viewModel.searchTranscript(query: "AAPL", withTag: "market")
+        XCTAssertEqual(results.count, 2) // Only the two with "market" tag
+
+        // Search with tag only
+        let tagOnly = viewModel.searchTranscript(query: "", withTag: "market")
+        XCTAssertEqual(tagOnly.count, 2)
+
+        // Search with query only
+        let queryOnly = viewModel.searchTranscript(query: "AAPL", withTag: nil)
+        XCTAssertEqual(queryOnly.count, 3)
+    }
+
+    // MARK: - Query complexity
+
+    func testEstimateQueryComplexity() {
+        let viewModel = SiftViewModel(
+            executor: nil,
+            chatResponder: MockChatResponder(response: .init(provider: .claude, text: "ignored")),
+            sessionStore: MemorySessionStore(snapshot: .init(settings: AppSettings(hasCompletedSetup: true), sources: [], selectedSourceID: nil, transcript: [])),
+            secretStore: MemorySecretStore(),
+            environment: ["PATH": "/bin"]
+        )
+
+        XCTAssertEqual(viewModel.estimateQueryComplexity("SELECT * FROM trades;"), .simple)
+        XCTAssertEqual(viewModel.estimateQueryComplexity("SELECT * FROM a JOIN b ON a.id = b.id;"), .moderate)
+    }
+
     // MARK: - Alias edge cases
 
     func testResolveNonexistentAlias() {
