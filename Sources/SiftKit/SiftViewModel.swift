@@ -605,7 +605,16 @@ public final class SiftViewModel: ObservableObject {
     private func discoverSchema(for source: DataSource, executor: any CommandExecuting) async {
         do {
             let tables = try await executor.discoverSchema(for: source)
-            guard !tables.isEmpty else { return }
+            guard !tables.isEmpty else {
+                appendTranscript(
+                    TranscriptItem(
+                        role: .system,
+                        title: "Schema",
+                        body: "No tables found in \(source.displayName). The database may be empty or use a non-standard layout."
+                    )
+                )
+                return
+            }
 
             if let idx = sources.firstIndex(where: { $0.id == source.id }) {
                 sources[idx].discoveredTables = tables
@@ -629,7 +638,13 @@ public final class SiftViewModel: ObservableObject {
             )
             persistSnapshot()
         } catch {
-            // Schema discovery is best-effort — don't block on failure
+            appendTranscript(
+                TranscriptItem(
+                    role: .system,
+                    title: "Schema Discovery Failed",
+                    body: "Could not read schema: \(error.localizedDescription)"
+                )
+            )
         }
     }
 
