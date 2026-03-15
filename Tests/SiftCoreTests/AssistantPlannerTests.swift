@@ -4058,6 +4058,113 @@ final class SQLSanitizerEdgeCaseTests: XCTestCase {
     }
 }
 
+// MARK: - PromptContextBuilder edge cases
+
+final class PromptContextBuilderEdgeCaseTests: XCTestCase {
+    func testShortLabelForDuckDB() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/db.duckdb"), kind: .duckdb)
+        XCTAssertEqual(PromptContextBuilder.shortLabel(for: source), "db.duckdb (DuckDB)")
+    }
+
+    func testSourceContextForCSV() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv)
+        let ctx = PromptContextBuilder.sourceContext(for: source)
+        XCTAssertTrue(ctx.contains("CSV"))
+        XCTAssertTrue(ctx.contains("read_csv"))
+    }
+
+    func testSourceContextWithNotes() {
+        // Notes don't appear in context (they're for the user, not the prompt)
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.parquet"), kind: .parquet, notes: "important")
+        let ctx = PromptContextBuilder.sourceContext(for: source)
+        XCTAssertTrue(ctx.contains("Parquet"))
+    }
+}
+
+// MARK: - TranscriptArchiver with tags
+
+final class TranscriptArchiverWithTagsTests: XCTestCase {
+    func testArchivedItemsPreserveTags() {
+        let now = Date()
+        let items = [
+            TranscriptItem(role: .user, title: "A", body: "old", timestamp: now.addingTimeInterval(-7200), tags: ["sql"]),
+        ]
+        let (_, archived) = TranscriptArchiver.archive(items: items, olderThan: now.addingTimeInterval(-3600))
+        XCTAssertEqual(archived.first?.tags, ["sql"])
+    }
+
+    func testArchivedItemsPreservePinnedFlag() {
+        let now = Date()
+        let items = [
+            TranscriptItem(role: .user, title: "A", body: "old", timestamp: now.addingTimeInterval(-7200), isPinned: true),
+        ]
+        let (_, archived) = TranscriptArchiver.archive(items: items, olderThan: now.addingTimeInterval(-3600))
+        XCTAssertTrue(archived.first?.isPinned == true)
+    }
+}
+
+// MARK: - DataSource computed properties
+
+final class DataSourceComputedPropertiesTests: XCTestCase {
+    func testSupportedExtensionsDoesNotContainUnsupported() {
+        let exts = DataSource.supportedExtensions
+        XCTAssertFalse(exts.contains("xlsx"))
+        XCTAssertFalse(exts.contains("txt"))
+        XCTAssertFalse(exts.contains("pdf"))
+    }
+
+    func testIsTabularForAllFileTypes() {
+        XCTAssertTrue(DataSource(url: URL(fileURLWithPath: "/tmp/a.parquet"), kind: .parquet).isTabularFile)
+        XCTAssertTrue(DataSource(url: URL(fileURLWithPath: "/tmp/a.csv"), kind: .csv).isTabularFile)
+        XCTAssertTrue(DataSource(url: URL(fileURLWithPath: "/tmp/a.json"), kind: .json).isTabularFile)
+        XCTAssertFalse(DataSource(url: URL(fileURLWithPath: "/tmp/a.duckdb"), kind: .duckdb).isTabularFile)
+    }
+
+    func testSelectQueryWithPathContainingSpaces() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/my data/file.parquet"), kind: .parquet)
+        let sql = source.selectQuery(limit: 5)
+        XCTAssertNotNil(sql)
+        XCTAssertTrue(sql?.contains("LIMIT 5") == true)
+    }
+
+    func testSummarizeQueryForJSON() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.json"), kind: .json)
+        let sql = source.summarizeQuery()
+        XCTAssertTrue(sql?.contains("SUMMARIZE") == true)
+        XCTAssertTrue(sql?.contains("read_json") == true)
+    }
+
+    func testDescribeQueryForCSV() {
+        let source = DataSource(url: URL(fileURLWithPath: "/tmp/data.csv"), kind: .csv)
+        let sql = source.describeQuery()
+        XCTAssertTrue(sql?.contains("DESCRIBE") == true)
+        XCTAssertTrue(sql?.contains("read_csv") == true)
+    }
+}
+
+// MARK: - QueryExecutionStats formatting
+
+final class QueryExecutionStatsFormattingTests: XCTestCase {
+    func testFormattedDurationVariousRanges() {
+        XCTAssertEqual(QueryExecutionStats(sql: "", durationMilliseconds: 0.1, succeeded: true).durationFormatted, "<1ms")
+        XCTAssertEqual(QueryExecutionStats(sql: "", durationMilliseconds: 1, succeeded: true).durationFormatted, "1ms")
+        XCTAssertEqual(QueryExecutionStats(sql: "", durationMilliseconds: 999, succeeded: true).durationFormatted, "999ms")
+        XCTAssertEqual(QueryExecutionStats(sql: "", durationMilliseconds: 1000, succeeded: true).durationFormatted, "1.00s")
+        XCTAssertEqual(QueryExecutionStats(sql: "", durationMilliseconds: 15000, succeeded: true).durationFormatted, "15.00s")
+    }
+}
+
+// MARK: - CommandInfo model
+
+final class CommandInfoModelTests: XCTestCase {
+    func testCommandInfoSendable() {
+        let info = CommandInfo(command: "/help", description: "Show help")
+        let copy = info // Value type, Sendable
+        XCTAssertEqual(copy.command, "/help")
+    }
+}
+
+
 // MARK: - Transcript Archiver
 
 final class TranscriptArchiverTests: XCTestCase {
