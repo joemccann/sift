@@ -104,3 +104,23 @@ For end-to-end UI verification:
 ```bash
 ./scripts/run_ui_smoke_tests.sh
 ```
+
+## Development Rules
+
+### Known Environment Gotchas
+- DuckDB CLI may be missing or version-mismatched — `DuckDBAdapter` locates the binary; verify with `which duckdb` before debugging query failures.
+- Metal toolchain can be absent on fresh Xcode installs. Run `.claude/skills/metal-macos-replatform/scripts/check-metal-toolchain.sh` or `xcodebuild -downloadComponent metalToolchain`.
+- Session file at `~/Library/Application Support/Sift/session.json` can become corrupted — if session hydration fails, check the file directly before assuming code bugs.
+- File access in a future sandboxed build will require security-scoped bookmarks; don't assume plain file URLs will always work.
+
+### UI Verification
+After any SwiftUI view change, run both `swift test` and `./scripts/run_ui_smoke_tests.sh` before committing. Don't assume code changes produce the expected visual result — verify rendered output.
+
+### Data Integrity
+Preserve DuckDB numeric precision and type semantics through the entire display pipeline. Never silently coerce, format, or drop precision on numeric query results without explicit approval.
+
+### TDD for Planner and Command Changes
+Never change `AssistantPlanner`, pattern extractors, or `CommandRegistry` without writing a failing test first. These modules have 500+ existing tests — regressions are unacceptable.
+
+### Session Discipline
+Keep implementation sessions (e.g., "add a new pattern extractor") separate from architecture/planning sessions (e.g., "plan Metal workspace redesign"). Mixed sessions stall when the planning phase balloons after implementation is done.
