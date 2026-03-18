@@ -1,0 +1,4 @@
+interface:
+  display_name: "macOS Branded Notifications"
+  short_description: "Branded Notification Center integration with custom icons"
+  default_prompt: "Use $macos-branded-notifications to send native macOS notifications with custom app branding."

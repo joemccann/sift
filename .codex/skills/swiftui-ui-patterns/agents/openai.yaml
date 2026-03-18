@@ -1,0 +1,4 @@
+interface:
+  display_name: "SwiftUI UI Patterns"
+  short_description: "Best practices for SwiftUI views, state, and composition"
+  default_prompt: "Use $swiftui-ui-patterns when creating or refactoring SwiftUI views, tabs, sheets, or navigation."

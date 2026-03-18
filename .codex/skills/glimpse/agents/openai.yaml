@@ -1,0 +1,4 @@
+interface:
+  display_name: "Glimpse"
+  short_description: "Native macOS micro-UI windows from scripts and agents"
+  default_prompt: "Use $glimpse to show native macOS dialogs, forms, charts, or floating widgets."
